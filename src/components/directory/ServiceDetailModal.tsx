@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import type { ServiceManifest, ServiceEndpoint } from '../../types/service.js';
-import { X, Copy, Check, Play, AlertTriangle } from 'lucide-react';
+import { X, Play, AlertTriangle } from 'lucide-react';
+import { CodeSnippetGenerator } from '../common/CodeSnippetGenerator.js';
 
 interface ServiceDetailModalProps {
   service: ServiceManifest | null;
@@ -14,19 +15,11 @@ export const ServiceDetailModal: React.FC<ServiceDetailModalProps> = ({
   onOpenPlayground,
 }) => {
   const [selectedEndpointIndex, setSelectedEndpointIndex] = useState<number>(0);
-  const [copiedPath, setCopiedPath] = useState<string | null>(null);
-  const [activeCodeTab, setActiveCodeTab] = useState<'curl' | 'ts' | 'python'>('curl');
 
   if (!service) return null;
 
   const currentEp = service.endpoints[selectedEndpointIndex] || service.endpoints[0];
   const isTestnet = service.network === 'eip155:2368';
-
-  const handleCopy = (text: string, id: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedPath(id);
-    setTimeout(() => setCopiedPath(null), 2000);
-  };
 
   // Convert USD price to integer token units
   const calculateTokenUnits = (usdStr: string) => {
@@ -39,50 +32,6 @@ export const ServiceDetailModal: React.FC<ServiceDetailModalProps> = ({
       // 1 USDC.e = 10^6 units ($1). $0.001 = 1000 units
       return Math.round(usd * 1e6).toString();
     }
-  };
-
-  const getCurlSnippet = (ep: ServiceEndpoint) => {
-    const fullUrl = `${service.base_url || 'https://your-host'}${ep.path}`;
-    const queryParams = ep.example_request?.query
-      ? '?' + new URLSearchParams(ep.example_request.query).toString()
-      : '';
-    const bodyPart =
-      ep.method !== 'GET' && ep.example_request?.body
-        ? ` \\\n  -H "Content-Type: application/json" \\\n  -d '${JSON.stringify(ep.example_request.body)}'`
-        : '';
-
-    return `curl -i -X ${ep.method} "${fullUrl}${queryParams}" \\
-  -H "Accept: application/json"${bodyPart}`;
-  };
-
-  const getTsSnippet = (ep: ServiceEndpoint) => {
-    const queryParams = ep.example_request?.query
-      ? '?' + new URLSearchParams(ep.example_request.query).toString()
-      : '';
-    return `// Using Kite x402 client or fetch with EIP-3009 authorization
-const res = await fetch("${service.base_url || 'https://your-host'}${ep.path}${queryParams}", {
-  method: "${ep.method}",
-  headers: {
-    "Accept": "application/json",
-    // 1st call triggers 402, 2nd call attaches:
-    // "PAYMENT-SIGNATURE": "<base64-eip3009-authorization>"
-  }${ep.method !== 'GET' && ep.example_request?.body ? `,\n  body: JSON.stringify(${JSON.stringify(ep.example_request.body, null, 2)})` : ''}
-});
-const data = await res.json();
-console.log(data);`;
-  };
-
-  const getPythonSnippet = (ep: ServiceEndpoint) => {
-    return `import requests
-
-url = "${service.base_url || 'https://your-host'}${ep.path}"
-headers = {
-    "Accept": "application/json",
-    # "PAYMENT-SIGNATURE": "<base64-eip3009-authorization>"
-}
-${ep.example_request?.query ? `params = ${JSON.stringify(ep.example_request.query)}\n` : ''}${ep.method !== 'GET' && ep.example_request?.body ? `json_body = ${JSON.stringify(ep.example_request.body)}\n` : ''}
-response = requests.${ep.method.toLowerCase()}(url, headers=headers${ep.example_request?.query ? ', params=params' : ''}${ep.method !== 'GET' && ep.example_request?.body ? ', json=json_body' : ''})
-print(response.status_code, response.json())`;
   };
 
   return (
@@ -361,68 +310,12 @@ print(response.status_code, response.json())`;
             </div>
           )}
 
-          {/* Code Snippets Section */}
+          {/* Interactive Code Generator Component */}
           <div style={{ marginTop: '1.25rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
-              <div style={{ display: 'flex', gap: '0.4rem' }}>
-                {(['curl', 'ts', 'python'] as const).map((tab) => (
-                  <button
-                    key={tab}
-                    onClick={() => setActiveCodeTab(tab)}
-                    style={{
-                      padding: '3px 10px',
-                      fontSize: '0.75rem',
-                      borderRadius: '4px',
-                      border: 'none',
-                      cursor: 'pointer',
-                      background: activeCodeTab === tab ? 'var(--bg-tertiary)' : 'transparent',
-                      color: activeCodeTab === tab ? 'var(--accent-cyan)' : 'var(--text-muted)',
-                      fontWeight: activeCodeTab === tab ? 600 : 400,
-                      textTransform: tab === 'ts' ? 'uppercase' : 'capitalize',
-                    }}
-                  >
-                    {tab === 'ts' ? 'TypeScript' : tab}
-                  </button>
-                ))}
-              </div>
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+              DEVELOPER CODE SNIPPETS
             </div>
-
-            <div style={{ position: 'relative' }}>
-              <pre className="code-block" style={{ margin: 0, fontSize: '0.78rem' }}>
-                {activeCodeTab === 'curl' && getCurlSnippet(currentEp)}
-                {activeCodeTab === 'ts' && getTsSnippet(currentEp)}
-                {activeCodeTab === 'python' && getPythonSnippet(currentEp)}
-              </pre>
-              <button
-                onClick={() => {
-                  const content =
-                    activeCodeTab === 'curl'
-                      ? getCurlSnippet(currentEp)
-                      : activeCodeTab === 'ts'
-                      ? getTsSnippet(currentEp)
-                      : getPythonSnippet(currentEp);
-                  handleCopy(content, currentEp.path);
-                }}
-                style={{
-                  position: 'absolute',
-                  top: '8px',
-                  right: '8px',
-                  background: 'var(--bg-tertiary)',
-                  border: '1px solid var(--border-glass)',
-                  color: 'var(--text-secondary)',
-                  borderRadius: '4px',
-                  padding: '4px',
-                  cursor: 'pointer',
-                }}
-                title="Copy code"
-              >
-                {copiedPath === currentEp.path ? (
-                  <Check size={13} color="var(--accent-emerald)" />
-                ) : (
-                  <Copy size={13} />
-                )}
-              </button>
-            </div>
+            <CodeSnippetGenerator service={service} endpoint={currentEp} />
           </div>
         </div>
       </div>
