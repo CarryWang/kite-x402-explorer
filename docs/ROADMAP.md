@@ -7,12 +7,12 @@ This document tracks the daily commits and development progress for the 4-week i
 ## 📅 Week 1: Foundation, Data Layer & Directory Showcase
 
 - [x] **Day 1**: Project initialization, directory structure, Vite + TypeScript setup, core type definitions (`ServiceManifest`, `KiteChainConfig`, `X402ChallengePayload`), and baseline documentation (`README.md`, `ARCHITECTURE.md`, `ROADMAP.md`).
-- [ ] **Day 2**: Service Schema Validator (implement Ajv schema validator conforming to `service.schema.json`).
-- [ ] **Day 3**: Manifest Loader & Dataset Integration (load `open-meteo-weather` and custom mock services).
-- [ ] **Day 4**: Directory View UI (category filtering, real-time keyword search, responsive card layout).
-- [ ] **Day 5**: Service Detail Inspection Drawer (endpoint schema breakdown, parameters table, pricing units).
-- [ ] **Day 6**: Developer Code Snippet Generator (cURL, TypeScript SDK, Python requests export).
-- [ ] **Day 7**: Week 1 Polish (responsive mobile layouts, dark-mode styling fine-tuning, first milestone tag).
+- [x] **Day 2**: Service Schema Validator (implement Ajv schema validator conforming to `service.schema.json`).
+- [x] **Day 3**: Manifest Loader & Dataset Integration (load `open-meteo-weather` and custom mock services).
+- [x] **Day 4**: Directory View UI (category filtering, real-time keyword search, responsive card layout).
+- [x] **Day 5**: Service Detail Inspection Drawer (endpoint schema breakdown, parameters table, pricing units).
+- [x] **Day 6**: Developer Code Snippet Generator (cURL, TypeScript SDK, Python requests export).
+- [x] **Day 7**: Week 1 Polish (responsive mobile layouts, dark-mode styling fine-tuning, error boundary protection).
 
 ---
 
