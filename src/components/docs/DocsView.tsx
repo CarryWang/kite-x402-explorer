@@ -107,28 +107,34 @@ GET /v1/resource
         <div className="glass-card" style={{ borderLeft: '4px solid var(--accent-emerald)' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-              <span className="badge badge-emerald">WEEK 3</span>
-              <h4 style={{ fontSize: '1.1rem', fontWeight: 700 }}>Health Probing & Transaction Proof Logs</h4>
+              <span className="badge badge-emerald">WEEK 3 (SPRINT 1)</span>
+              <h4 style={{ fontSize: '1.1rem', fontWeight: 700 }}>Health Probing Engine & Local Proof Logs</h4>
             </div>
-            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Upcoming</span>
+            <span style={{ fontSize: '0.8rem', color: 'var(--accent-cyan)', fontWeight: 600 }}>Next Weekly Release</span>
           </div>
-          <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)' }}>
-            Real-time /healthz endpoint probing, latency benchmarking, local receipt log storage, and verifiable audit export.
+          <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
+            Automated /healthz endpoint probing, real-time latency indicators, persistent local transaction history, and verifiable payment receipt export.
           </p>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+            Weekly Commit: feat: implement service health probing engine, live latency badges, and persistent proof logs
+          </div>
         </div>
 
         {/* Week 4 */}
         <div className="glass-card" style={{ borderLeft: '4px solid var(--accent-amber)' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-              <span className="badge badge-amber">WEEK 4</span>
-              <h4 style={{ fontSize: '1.1rem', fontWeight: 700 }}>Manifest Builder, Kite Testnet E2E & Release</h4>
+              <span className="badge badge-amber">WEEK 4 (SPRINT 2)</span>
+              <h4 style={{ fontSize: '1.1rem', fontWeight: 700 }}>Manifest Visual Builder, Testnet E2E & Go-Live</h4>
             </div>
-            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Upcoming</span>
+            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Upcoming Weekly Release</span>
           </div>
-          <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)' }}>
-            Visual service.yaml generator for new developers, live testnet transactions, production Docker/Vercel deployment, and open-source submission.
+          <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
+            Interactive "Register New Service" form, real-time Schema linting, one-click PR-ready YAML export, live Kite testnet run, and production bundle packaging.
           </p>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+            Weekly Commit: feat: add manifest visual builder, testnet e2e suite, and production deployment bundle
+          </div>
         </div>
       </div>
     </div>
