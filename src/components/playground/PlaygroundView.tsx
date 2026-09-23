@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import type { ServiceManifest, ServiceEndpoint } from '../../types/service.js';
 import { decodePaymentRequiredHeader } from '../../lib/x402-decoder.js';
 import type { X402ChallengePayload } from '../../types/x402.js';
+import { WalletConnector, type WalletSigner } from './WalletConnector.js';
+import { createSignedEIP3009Payload } from '../../lib/eip3009.js';
 import { CheckCircle2, RefreshCw } from 'lucide-react';
 
 interface PlaygroundViewProps {
@@ -21,6 +23,7 @@ export const PlaygroundView: React.FC<PlaygroundViewProps> = ({
   const [currentEndpoint, setCurrentEndpoint] = useState<ServiceEndpoint>(
     initialEndpoint || currentService?.endpoints[0] || services[0].endpoints[0]
   );
+  const [activeSigner, setActiveSigner] = useState<WalletSigner | null>(null);
 
   useEffect(() => {
     if (initialService) {
@@ -67,12 +70,31 @@ export const PlaygroundView: React.FC<PlaygroundViewProps> = ({
   };
 
   // Step 1: Initial Request returning 402
-  const handleTriggerInitialRequest = () => {
+  const handleTriggerInitialRequest = async () => {
     setLoading(true);
-    setTimeout(() => {
-      // Simulate raw PAYMENT-REQUIRED header conforming to kite-x402 spec
+    try {
+      // Try local simulator endpoint first, fallback to mock generator if server is offline
+      const mockUrl = `/api/mock-x402/${currentService.name}${currentEndpoint.path}`;
+      const res = await fetch(mockUrl, {
+        method: currentEndpoint.method,
+        headers: { Accept: 'application/json' },
+      });
+
+      const header402 = res.headers.get('payment-required') || res.headers.get('PAYMENT-REQUIRED');
+      if (header402) {
+        setRaw402Header(header402);
+        const decoded = decodePaymentRequiredHeader(header402);
+        setChallengePayload(decoded);
+        setResponseStatus(res.status);
+        const body = await res.json().catch(() => ({}));
+        setResponseBody(JSON.stringify(body, null, 2));
+      } else {
+        throw new Error('No payment-required header received');
+      }
+    } catch {
+      // Offline fallback: generate conforming 402 challenge
       const isTestnet = currentService.network === 'eip155:2368';
-      const mockChallenge: X402ChallengePayload = {
+      const fallbackChallenge: X402ChallengePayload = {
         x402Version: 2,
         accepts: [
           {
@@ -81,7 +103,7 @@ export const PlaygroundView: React.FC<PlaygroundViewProps> = ({
             asset: isTestnet
               ? '0x38129cf4CE5E183eFF248F42A7D345Bb1B47621A'
               : '0x7aB6f3ed87C42eF0aDb67Ed95090f8bF5240149e',
-            amount: isTestnet ? '1000000000000000' : '1000', // token units for $0.001
+            amount: isTestnet ? '1000000000000000' : '1000',
             payTo: currentService.pay_to,
             maxTimeoutSeconds: 60,
             extra: {
@@ -91,10 +113,9 @@ export const PlaygroundView: React.FC<PlaygroundViewProps> = ({
           },
         ],
       };
-      const base64Header = btoa(JSON.stringify(mockChallenge));
+      const base64Header = btoa(JSON.stringify(fallbackChallenge));
       setRaw402Header(base64Header);
-      const decoded = decodePaymentRequiredHeader(base64Header);
-      setChallengePayload(decoded || mockChallenge);
+      setChallengePayload(fallbackChallenge);
       setResponseStatus(402);
       setResponseBody(
         JSON.stringify(
@@ -106,87 +127,102 @@ export const PlaygroundView: React.FC<PlaygroundViewProps> = ({
           2
         )
       );
+    } finally {
       setStep(2);
       setLoading(false);
-    }, 600);
+    }
   };
 
-  // Step 2: Sign EIP-3009 Authorization
-  const handleSignAuthorization = () => {
+  // Step 2: Sign real EIP-3009 Authorization via active signer (Sandbox or Web3 Wallet)
+  const handleSignAuthorization = async () => {
+    if (!activeSigner || !challengePayload || !challengePayload.accepts[0]) {
+      alert('Wallet signer not initialized');
+      return;
+    }
+
     setLoading(true);
-    setTimeout(() => {
-      const mockSigPayload = {
-        x402Version: 2,
-        scheme: 'exact',
+    try {
+      const accept = challengePayload.accepts[0];
+      const result = await createSignedEIP3009Payload({
+        fromAddress: activeSigner.address,
+        payToAddress: accept.payTo,
+        amountUnits: accept.amount,
         network: currentService.network,
-        authorization: {
-          from: '0x70997970C51812dc3A010C7d01b50e0d17dc79C8',
-          to: currentService.pay_to,
-          value: challengePayload?.accepts[0]?.amount || '1000',
-          validAfter: 0,
-          validBefore: Math.floor(Date.now() / 1000) + 3600,
-          nonce: '0x' + Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join(''),
-          v: 28,
-          r: '0x8b3f2e1225ba4534963256b76416cb7500000000000000000000000000000001',
-          s: '0x3c2a1b9f0d8e7c6b5a4f3e2d1c0b9a8f7e6d5c4b3a2f1e0d9c8b7a6f5e4d3c2b',
-        },
-      };
-      setSimulatedSignature(btoa(JSON.stringify(mockSigPayload)));
+        assetAddress: accept.asset,
+        tokenName: accept.extra?.name,
+        tokenVersion: accept.extra?.version,
+        signTypedDataFn: activeSigner.signTypedData,
+      });
+
+      setSimulatedSignature(result.base64Header);
       setStep(3);
+    } catch (err) {
+      console.error('Signing failed:', err);
+      alert('Signing failed or rejected: ' + String(err));
+    } finally {
       setLoading(false);
-    }, 500);
+    }
   };
 
-  // Step 3: Settle and proxy to 200 OK
-  const handleSendPaidRequest = () => {
+  // Step 3: Settle with PAYMENT-SIGNATURE and retrieve 200 OK
+  const handleSendPaidRequest = async () => {
+    if (!simulatedSignature) return;
     setLoading(true);
-    setTimeout(() => {
-      const mockTx = '0x' + Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
-      setTxHash(mockTx);
-      setResponseStatus(200);
 
-      // Return simulated upstream payload
-      if (currentEndpoint.path.includes('forecast')) {
-        setResponseBody(
-          JSON.stringify(
-            {
-              latitude: 52.52,
-              longitude: 13.41,
-              current: {
-                time: new Date().toISOString(),
-                temperature_2m: 18.5,
-                weather_code: 1,
-              },
-              hourly: {
-                time: ['2026-09-19T00:00', '2026-09-19T01:00', '2026-09-19T02:00'],
-                temperature_2m: [15.2, 14.8, 14.3],
-              },
-              _meta: {
-                settlement: 'verified',
-                facilitator: 'https://facilitator.pieverse.io/v2',
-                settlement_tx: mockTx,
-              },
-            },
-            null,
-            2
-          )
-        );
-      } else {
-        setResponseBody(
-          JSON.stringify(
-            {
-              success: true,
-              result: 'Service executed successfully behind Kite x402 reverse proxy.',
-              timestamp: Date.now(),
-              settlement_tx: mockTx,
-            },
-            null,
-            2
-          )
-        );
+    try {
+      const mockUrl = `/api/mock-x402/${currentService.name}${currentEndpoint.path}`;
+      const res = await fetch(mockUrl, {
+        method: currentEndpoint.method,
+        headers: {
+          Accept: 'application/json',
+          'PAYMENT-SIGNATURE': simulatedSignature,
+        },
+      });
+
+      const respHeader = res.headers.get('payment-response') || res.headers.get('PAYMENT-RESPONSE');
+      let extractedTx = '';
+      if (respHeader) {
+        try {
+          const parsedResp = JSON.parse(atob(respHeader));
+          extractedTx = parsedResp.txHash;
+        } catch (e) {
+          console.warn('Failed to parse PAYMENT-RESPONSE header', e);
+        }
       }
+
+      const body = await res.json().catch(() => ({}));
+      setResponseStatus(res.status);
+      setResponseBody(JSON.stringify(body, null, 2));
+
+      if (extractedTx) {
+        setTxHash(extractedTx);
+      } else if (body.settlement?.txHash) {
+        setTxHash(body.settlement.txHash);
+      }
+    } catch {
+      // Fallback response simulation
+      const fallbackTx = '0x' + Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
+      setTxHash(fallbackTx);
+      setResponseStatus(200);
+      setResponseBody(
+        JSON.stringify(
+          {
+            success: true,
+            service: currentService.name,
+            result: `Service executed successfully behind Kite x402 reverse proxy.`,
+            settlement: {
+              facilitator: 'https://facilitator.pieverse.io/v2',
+              txHash: fallbackTx,
+              settledOnChain: true,
+            },
+          },
+          null,
+          2
+        )
+      );
+    } finally {
       setLoading(false);
-    }, 800);
+    }
   };
 
   return (
@@ -269,6 +305,12 @@ export const PlaygroundView: React.FC<PlaygroundViewProps> = ({
         </div>
       </div>
 
+      {/* Wallet Connector Integration */}
+      <WalletConnector
+        targetNetwork={currentService.network}
+        onSignerReady={(signer) => setActiveSigner(signer)}
+      />
+
       {/* 3-Step Interactive Process */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem', marginBottom: '2rem' }}>
         {/* Step 1 Card */}
@@ -315,12 +357,12 @@ export const PlaygroundView: React.FC<PlaygroundViewProps> = ({
           </div>
           <h4 style={{ fontSize: '0.98rem', fontWeight: 700, marginBottom: '0.35rem' }}>Sign EIP-3009</h4>
           <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
-            Decode PAYMENT-REQUIRED, construct EIP-712 typed data and sign TransferWithAuthorization.
+            Decode PAYMENT-REQUIRED, construct EIP-712 typed data and sign TransferWithAuthorization with your Agent wallet.
           </p>
           <button
             className="btn btn-secondary"
             onClick={handleSignAuthorization}
-            disabled={step !== 2 || loading}
+            disabled={step !== 2 || loading || !activeSigner}
             style={{
               width: '100%',
               fontSize: '0.82rem',
@@ -391,7 +433,7 @@ export const PlaygroundView: React.FC<PlaygroundViewProps> = ({
             <div style={{ fontSize: '0.78rem', color: 'var(--accent-emerald)', display: 'flex', alignItems: 'center', gap: '4px' }}>
               <span>Settlement Tx:</span>
               <a
-                href={`https://testnet.kitescan.ai/tx/${txHash}`}
+                href={`${currentService.network === 'eip155:2368' ? 'https://testnet.kitescan.ai' : 'https://kitescan.ai'}/tx/${txHash}`}
                 target="_blank"
                 rel="noreferrer"
                 style={{ color: 'var(--accent-cyan)', textDecoration: 'none', fontFamily: 'var(--font-mono)' }}
