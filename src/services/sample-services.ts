@@ -122,4 +122,75 @@ export const INITIAL_SERVICES: ServiceManifest[] = [
       },
     ],
   },
+  {
+    schema: 1,
+    name: 'crypto-whale-alert',
+    display_name: 'Real-time Whale Activity & Liquidity Monitor',
+    description: 'Track large on-chain token swaps, bridge inflows, and centralized exchange reserve shifts for market prediction.',
+    maintainer: {
+      github: 'whale-watcher-dao',
+      contact: 'alerts@whalewatcher.org',
+    },
+    status: 'testnet',
+    base_url: 'https://whale.sandbox.gokite.ai',
+    network: 'eip155:2368',
+    pay_to: '0x4444444444444444444444444444444444444444',
+    upstream: {
+      name: 'Whale Stream Engine',
+      url: 'https://api.whalestream.io',
+      requires_api_key: false,
+    },
+    categories: ['finance', 'data'],
+    tags: ['whale', 'liquidity', 'dex', 'analytics'],
+    source: 'typescript-express',
+    endpoints: [
+      {
+        method: 'GET',
+        path: '/v1/transfers/recent',
+        summary: 'Query high-value transactions (> $100k) observed in the last 15 minutes across major EVM chains.',
+        price_usd: '0.002',
+        example_request: {
+          query: {
+            min_usd: '100000',
+            limit: '20',
+          },
+        },
+      },
+    ],
+  },
+  {
+    schema: 1,
+    name: 'ai-code-auditor',
+    display_name: 'Autonomous Code Review & Refactor Agent',
+    description: 'Automated static analysis, cyclomatic complexity profiling, and vulnerability patch generator for git diffs.',
+    maintainer: {
+      github: 'antigravity-labs',
+    },
+    status: 'live',
+    base_url: 'https://codereview.gokite.ai',
+    network: 'eip155:2366',
+    pay_to: '0x5555555555555555555555555555555555555555',
+    upstream: {
+      name: 'DeepReview Engine',
+      url: 'https://api.deepreview.internal',
+      requires_api_key: true,
+    },
+    categories: ['ai', 'other'],
+    tags: ['code-review', 'ast', 'security', 'dev-tool'],
+    source: 'custom',
+    endpoints: [
+      {
+        method: 'POST',
+        path: '/v1/review/diff',
+        summary: 'Submit a unified git diff and receive line-by-line security issues and optimization recommendations.',
+        price_usd: '0.005',
+        example_request: {
+          body: {
+            diff: '--- a/contract.sol\n+++ b/contract.sol\n@@ -10,3 +10,4 @@ function transfer() public { ... }',
+            language: 'solidity',
+          },
+        },
+      },
+    ],
+  },
 ];
