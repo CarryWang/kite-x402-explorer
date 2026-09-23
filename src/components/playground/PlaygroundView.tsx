@@ -3,6 +3,7 @@ import type { ServiceManifest, ServiceEndpoint } from '../../types/service.js';
 import { decodePaymentRequiredHeader } from '../../lib/x402-decoder.js';
 import type { X402ChallengePayload } from '../../types/x402.js';
 import { WalletConnector, type WalletSigner } from './WalletConnector.js';
+import { ProtocolVisualizer } from './ProtocolVisualizer.js';
 import { createSignedEIP3009Payload } from '../../lib/eip3009.js';
 import { CheckCircle2, RefreshCw } from 'lucide-react';
 
@@ -502,6 +503,16 @@ export const PlaygroundView: React.FC<PlaygroundViewProps> = ({
           {responseBody || '// Console output will appear here after triggering step 1...'}
         </pre>
       </div>
+
+      {/* Protocol Visualizer & Audit Trail */}
+      <ProtocolVisualizer
+        step={step}
+        challengePayload={challengePayload}
+        rawSignaturePayload={simulatedSignature}
+        responseStatus={responseStatus}
+        txHash={txHash}
+        network={currentService.network}
+      />
     </div>
   );
 };
