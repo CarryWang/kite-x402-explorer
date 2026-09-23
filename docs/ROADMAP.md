@@ -18,13 +18,13 @@ This document tracks the daily commits and development progress for the 4-week i
 
 ## 📅 Week 2: x402 Interactive Protocol Playground
 
-- [ ] **Day 8**: Local CORS Proxy & Protocol Relay endpoint.
-- [ ] **Day 9**: Initial call dispatcher and 402 HTTP interceptor with Base64 header decoder.
-- [ ] **Day 10**: EIP-712 / EIP-3009 TransferWithAuthorization signature builder.
-- [ ] **Day 11**: Web3 Wallet connection (viem) & Sandboxed one-click private key generator.
-- [ ] **Day 12**: Paid request re-dispatch with `PAYMENT-SIGNATURE` header.
-- [ ] **Day 13**: Protocol Visualizer & Explorer Deep Linker (visualize 402 $\to$ 200 diff, transaction hash viewer).
-- [ ] **Day 14**: Error state handling (upstream timeouts, insufficient funds, signature rejections) & Week 2 tag.
+- [x] **Day 8**: Local CORS Proxy & Protocol Relay endpoint with full x402 header mirror.
+- [x] **Day 9**: Initial call dispatcher and 402 HTTP interceptor with Base64 header decoder.
+- [x] **Day 10**: EIP-712 / EIP-3009 TransferWithAuthorization signature builder.
+- [x] **Day 11**: Web3 Wallet connection (viem) & Sandboxed one-click private key generator.
+- [x] **Day 12**: Paid request re-dispatch with `PAYMENT-SIGNATURE` header.
+- [x] **Day 13**: Protocol Visualizer & Explorer Deep Linker (visualize 402 $\to$ 200 diff, transaction hash viewer).
+- [x] **Day 14**: Error state handling (upstream timeouts, insufficient funds, signature rejections) & Week 2 milestone.
 
 ---
 

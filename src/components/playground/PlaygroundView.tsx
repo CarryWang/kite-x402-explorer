@@ -5,7 +5,7 @@ import type { X402ChallengePayload } from '../../types/x402.js';
 import { WalletConnector, type WalletSigner } from './WalletConnector.js';
 import { ProtocolVisualizer } from './ProtocolVisualizer.js';
 import { createSignedEIP3009Payload } from '../../lib/eip3009.js';
-import { CheckCircle2, RefreshCw } from 'lucide-react';
+import { CheckCircle2, RefreshCw, AlertTriangle, ShieldCheck } from 'lucide-react';
 
 interface PlaygroundViewProps {
   services: ServiceManifest[];
@@ -41,6 +41,7 @@ export const PlaygroundView: React.FC<PlaygroundViewProps> = ({
   const [responseStatus, setResponseStatus] = useState<number | null>(null);
   const [responseBody, setResponseBody] = useState<string>('');
   const [txHash, setTxHash] = useState<string>('');
+  const [errorMode, setErrorMode] = useState<'none' | 'upstream-502' | 'expired-sig'>('none');
 
   const handleServiceChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const found = services.find((s) => s.name === e.target.value);
@@ -74,7 +75,6 @@ export const PlaygroundView: React.FC<PlaygroundViewProps> = ({
   const handleTriggerInitialRequest = async () => {
     setLoading(true);
     try {
-      // Try local simulator endpoint first, fallback to mock generator if server is offline
       const mockUrl = `/api/mock-x402/${currentService.name}${currentEndpoint.path}`;
       const res = await fetch(mockUrl, {
         method: currentEndpoint.method,
@@ -165,11 +165,64 @@ export const PlaygroundView: React.FC<PlaygroundViewProps> = ({
     }
   };
 
-  // Step 3: Settle with PAYMENT-SIGNATURE and retrieve 200 OK
+  // Step 3: Settle with PAYMENT-SIGNATURE and retrieve 200 OK (with failure protection handling)
   const handleSendPaidRequest = async () => {
     if (!simulatedSignature) return;
     setLoading(true);
 
+    // 1. Simulate Edge Case: Upstream 502 Failure
+    if (errorMode === 'upstream-502') {
+      setTimeout(() => {
+        setResponseStatus(502);
+        setTxHash('');
+        setResponseBody(
+          JSON.stringify(
+            {
+              error: 'upstream_unreachable',
+              status: 502,
+              detail: 'Upstream server returned HTTP 502. Facilitator settlement aborted.',
+              safety_guarantee:
+                'Kite x402 Protocol Rule: Settle only after upstream succeeds. Zero funds were deducted from buyer wallet.',
+              settlement: {
+                settled: false,
+                reason: 'upstream_status_ge_400',
+              },
+            },
+            null,
+            2
+          )
+        );
+        setLoading(false);
+      }, 600);
+      return;
+    }
+
+    // 2. Simulate Edge Case: Signature Expired
+    if (errorMode === 'expired-sig') {
+      setTimeout(() => {
+        setResponseStatus(400);
+        setTxHash('');
+        setResponseBody(
+          JSON.stringify(
+            {
+              error: 'facilitator_rejected',
+              status: 400,
+              detail: 'Signature validBefore deadline has passed.',
+              settlement: {
+                settled: false,
+                reason: 'signature_expired',
+              },
+            },
+            null,
+            2
+          )
+        );
+        setLoading(false);
+      }, 600);
+      return;
+    }
+
+    // 3. Normal Path
     try {
       const mockUrl = `/api/mock-x402/${currentService.name}${currentEndpoint.path}`;
       const res = await fetch(mockUrl, {
@@ -237,12 +290,12 @@ export const PlaygroundView: React.FC<PlaygroundViewProps> = ({
         </p>
       </div>
 
-      {/* Target Selector Bar */}
+      {/* Target Selector & Error Simulation Bar */}
       <div
         className="glass-card"
         style={{
           display: 'grid',
-          gridTemplateColumns: '1fr 1fr auto',
+          gridTemplateColumns: '1.2fr 1fr 1fr auto',
           gap: '1rem',
           alignItems: 'center',
           marginBottom: '1.5rem',
@@ -298,6 +351,30 @@ export const PlaygroundView: React.FC<PlaygroundViewProps> = ({
           </select>
         </div>
 
+        <div>
+          <label style={{ display: 'block', fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '0.35rem' }}>
+            SIMULATE EDGE CASES
+          </label>
+          <select
+            value={errorMode}
+            onChange={(e) => setErrorMode(e.target.value as typeof errorMode)}
+            style={{
+              width: '100%',
+              padding: '0.55rem',
+              background: errorMode !== 'none' ? 'rgba(244, 63, 94, 0.1)' : 'var(--bg-secondary)',
+              border: errorMode !== 'none' ? '1px solid rgba(244, 63, 94, 0.4)' : '1px solid var(--border-glass)',
+              borderRadius: 'var(--radius-md)',
+              color: errorMode !== 'none' ? 'var(--accent-rose)' : 'var(--text-primary)',
+              fontSize: '0.85rem',
+              fontWeight: errorMode !== 'none' ? 600 : 400,
+            }}
+          >
+            <option value="none">Normal (Happy Path)</option>
+            <option value="upstream-502">Upstream 502 (No Settle Guard)</option>
+            <option value="expired-sig">Expired Signature Rejection</option>
+          </select>
+        </div>
+
         <div style={{ alignSelf: 'flex-end' }}>
           <button className="btn btn-secondary" onClick={resetPlayground} style={{ padding: '0.55rem 1rem' }}>
             <RefreshCw size={14} />
@@ -305,6 +382,27 @@ export const PlaygroundView: React.FC<PlaygroundViewProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Safety Notice if edge case is selected */}
+      {errorMode === 'upstream-502' && (
+        <div
+          style={{
+            background: 'rgba(244, 63, 94, 0.1)',
+            border: '1px solid rgba(244, 63, 94, 0.25)',
+            borderRadius: 'var(--radius-md)',
+            padding: '0.85rem 1.25rem',
+            marginBottom: '1.5rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.75rem',
+          }}
+        >
+          <ShieldCheck size={20} color="var(--accent-rose)" />
+          <div style={{ fontSize: '0.85rem', color: 'var(--text-primary)' }}>
+            <strong>Safety Invariant Test:</strong> Simulating upstream crash. Kite x402 guarantees that if the API fails, the facilitator will abort on-chain broadcast, keeping your tokens safe!
+          </div>
+        </div>
+      )}
 
       {/* Wallet Connector Integration */}
       <WalletConnector
@@ -388,6 +486,9 @@ export const PlaygroundView: React.FC<PlaygroundViewProps> = ({
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
             <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--accent-emerald)' }}>STEP 3</span>
             {responseStatus === 200 && <CheckCircle2 size={16} color="var(--accent-emerald)" />}
+            {responseStatus && responseStatus >= 400 && responseStatus !== 402 && (
+              <AlertTriangle size={16} color="var(--accent-rose)" />
+            )}
           </div>
           <h4 style={{ fontSize: '0.98rem', fontWeight: 700, marginBottom: '0.35rem' }}>Settle & Return 200</h4>
           <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
@@ -425,7 +526,7 @@ export const PlaygroundView: React.FC<PlaygroundViewProps> = ({
                   color: responseStatus === 200 ? 'var(--accent-emerald)' : 'var(--accent-rose)',
                 }}
               >
-                HTTP {responseStatus} {responseStatus === 402 ? 'Payment Required' : 'OK'}
+                HTTP {responseStatus} {responseStatus === 402 ? 'Payment Required' : responseStatus === 200 ? 'OK' : 'Error'}
               </span>
             )}
           </div>

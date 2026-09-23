@@ -68,21 +68,17 @@ GET /v1/resource
               <span className="badge badge-cyan">WEEK 1</span>
               <h4 style={{ fontSize: '1.1rem', fontWeight: 700 }}>Foundation & Services Directory Showcase</h4>
             </div>
-            <span style={{ fontSize: '0.8rem', color: 'var(--accent-cyan)', fontWeight: 600 }}>In Progress (Day 1)</span>
+            <span style={{ fontSize: '0.8rem', color: 'var(--accent-emerald)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <CheckCircle size={14} /> Completed
+            </span>
           </div>
           <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
-            Initialize Vite + React + TypeScript workspace, core schemas, sample service manifests, and responsive directory cards.
+            Vite + React workspace, Ajv schema validator, YAML loader, multi-facet directory filtering & sorting, and deep parameter inspection drawer.
           </p>
           <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
             <span style={{ fontSize: '0.75rem', color: 'var(--accent-emerald)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <CheckCircle size={13} /> Day 1: Project Scaffolding & Docs
+              <CheckCircle size={13} /> Day 1-7: Full Directory, Spec Drawer & Code Generator
             </span>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>• Day 2: Schema Validator</span>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>• Day 3: Static Datasets</span>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>• Day 4: Directory UI</span>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>• Day 5: Details Drawer</span>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>• Day 6: Code Snippets</span>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>• Day 7: Week 1 Polish</span>
           </div>
         </div>
 
@@ -93,11 +89,18 @@ GET /v1/resource
               <span className="badge badge-purple">WEEK 2</span>
               <h4 style={{ fontSize: '1.1rem', fontWeight: 700 }}>Interactive x402 Protocol Playground</h4>
             </div>
-            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Upcoming</span>
+            <span style={{ fontSize: '0.8rem', color: 'var(--accent-emerald)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <CheckCircle size={14} /> Completed
+            </span>
           </div>
-          <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)' }}>
-            EIP-3009 TransferWithAuthorization construction, wallet connection (viem), 402 interceptor, and live Facilitator settlement verification.
+          <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
+            EIP-3009 TransferWithAuthorization construction, wallet connection (Viem injected & sandbox key), live 402 interceptor, protocol audit trail, KiteScan deep linker, and failure guardrails.
           </p>
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '0.75rem', color: 'var(--accent-emerald)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <CheckCircle size={13} /> Day 8-14: Full 3-Step Protocol Playground & Settlement Loop
+            </span>
+          </div>
         </div>
 
         {/* Week 3 */}
