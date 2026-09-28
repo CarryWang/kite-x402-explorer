@@ -200,6 +200,7 @@ const AjvClass: any = (Ajv as any).default || Ajv;
 const ajv = new AjvClass({
   allErrors: true,
   strict: false,
+  validateSchema: false,
 });
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const addFormatsFn: any = (addFormats as any).default || addFormats;

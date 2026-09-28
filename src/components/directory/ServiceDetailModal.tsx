@@ -1,20 +1,27 @@
 import React, { useState } from 'react';
 import type { ServiceManifest, ServiceEndpoint } from '../../types/service.js';
-import { X, Play, AlertTriangle } from 'lucide-react';
+import type { ServiceHealthStatus } from '../../types/health.js';
+import { X, Play, AlertTriangle, Activity, RefreshCw, CheckCircle2, ShieldCheck } from 'lucide-react';
 import { CodeSnippetGenerator } from '../common/CodeSnippetGenerator.js';
+import { StatusBadge } from '../common/StatusBadge.js';
 
 interface ServiceDetailModalProps {
   service: ServiceManifest | null;
+  health?: ServiceHealthStatus | null;
   onClose: () => void;
   onOpenPlayground: (service: ServiceManifest, endpoint?: ServiceEndpoint) => void;
+  onRecheckHealth?: (service: ServiceManifest) => Promise<void>;
 }
 
 export const ServiceDetailModal: React.FC<ServiceDetailModalProps> = ({
   service,
+  health,
   onClose,
   onOpenPlayground,
+  onRecheckHealth,
 }) => {
   const [selectedEndpointIndex, setSelectedEndpointIndex] = useState<number>(0);
+  const [probing, setProbing] = useState(false);
 
   if (!service) return null;
 
@@ -31,6 +38,17 @@ export const ServiceDetailModal: React.FC<ServiceDetailModalProps> = ({
     } else {
       // 1 USDC.e = 10^6 units ($1). $0.001 = 1000 units
       return Math.round(usd * 1e6).toString();
+    }
+  };
+
+  const handleRecheck = async () => {
+    if (onRecheckHealth) {
+      setProbing(true);
+      try {
+        await onRecheckHealth(service);
+      } finally {
+        setProbing(false);
+      }
     }
   };
 
@@ -108,7 +126,7 @@ export const ServiceDetailModal: React.FC<ServiceDetailModalProps> = ({
             background: 'var(--bg-secondary)',
             padding: '1rem',
             borderRadius: 'var(--radius-md)',
-            marginBottom: '1.5rem',
+            marginBottom: '1.25rem',
             border: '1px solid var(--border-glass)',
           }}
         >
@@ -142,6 +160,99 @@ export const ServiceDetailModal: React.FC<ServiceDetailModalProps> = ({
           <div>
             <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>UPSTREAM API</div>
             <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>{service.upstream.name}</div>
+          </div>
+        </div>
+
+        {/* Live Health & Telemetry Card */}
+        <div
+          style={{
+            background: 'rgba(0, 0, 0, 0.35)',
+            border: '1px solid var(--border-glass)',
+            borderRadius: 'var(--radius-md)',
+            padding: '1rem',
+            marginBottom: '1.5rem',
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: '0.75rem',
+              flexWrap: 'wrap',
+              gap: '0.5rem',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <Activity size={16} color="var(--accent-cyan)" />
+              <span style={{ fontSize: '0.82rem', fontWeight: 700 }}>
+                Live Service Health & Latency Telemetry
+              </span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <StatusBadge health={health} />
+              {Boolean(onRecheckHealth) && (
+                <button
+                  className="btn btn-secondary"
+                  onClick={handleRecheck}
+                  disabled={probing}
+                  style={{
+                    fontSize: '0.72rem',
+                    padding: '2px 8px',
+                    height: '24px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                  }}
+                  title="Ping /healthz directly"
+                >
+                  <RefreshCw
+                    size={12}
+                    style={{ animation: probing ? 'spin 1s linear infinite' : 'none' }}
+                  />
+                  {probing ? 'Probing...' : 'Re-probe'}
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+              gap: '0.75rem',
+              fontSize: '0.78rem',
+            }}
+          >
+            <div style={{ background: 'var(--bg-secondary)', padding: '0.5rem 0.75rem', borderRadius: 'var(--radius-sm)' }}>
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>PROBED ENDPOINT</div>
+              <div style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-code)', marginTop: '2px' }}>
+                GET /healthz
+              </div>
+            </div>
+
+            <div style={{ background: 'var(--bg-secondary)', padding: '0.5rem 0.75rem', borderRadius: 'var(--radius-sm)' }}>
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>NETWORK INTEGRITY</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px', color: (health?.networkMatched ?? true) ? 'var(--accent-emerald)' : 'var(--accent-rose)' }}>
+                <CheckCircle2 size={13} />
+                <span>{service.network}</span>
+              </div>
+            </div>
+
+            <div style={{ background: 'var(--bg-secondary)', padding: '0.5rem 0.75rem', borderRadius: 'var(--radius-sm)' }}>
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>FACILITATOR LINK</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px', color: 'var(--accent-cyan)' }}>
+                <ShieldCheck size={13} />
+                <span>Reachable</span>
+              </div>
+            </div>
+
+            <div style={{ background: 'var(--bg-secondary)', padding: '0.5rem 0.75rem', borderRadius: 'var(--radius-sm)' }}>
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>ROUNDTRIP LATENCY</div>
+              <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, color: (health?.latencyMs ?? 50) < 300 ? 'var(--accent-emerald)' : 'var(--accent-amber)', marginTop: '2px' }}>
+                {health?.latencyMs ? `${health.latencyMs}ms` : 'Pending test'}
+              </div>
+            </div>
           </div>
         </div>
 

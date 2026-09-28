@@ -1,15 +1,18 @@
-import React from 'react';
 import type { ServiceManifest } from '../../types/service.js';
+import type { ServiceHealthStatus } from '../../types/health.js';
 import { Play, Code } from 'lucide-react';
+import { StatusBadge } from '../common/StatusBadge.js';
 
 interface ServiceCardProps {
   service: ServiceManifest;
+  health?: ServiceHealthStatus | null;
   onSelectService: (service: ServiceManifest) => void;
   onOpenPlayground: (service: ServiceManifest) => void;
 }
 
 export const ServiceCard: React.FC<ServiceCardProps> = ({
   service,
+  health,
   onSelectService,
   onOpenPlayground,
 }) => {
@@ -24,13 +27,14 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem', flexWrap: 'wrap' }}>
             <h3 style={{ fontSize: '1.15rem', fontWeight: 700, color: 'var(--text-primary)' }}>
               {service.display_name}
             </h3>
             <span className={`badge ${service.status === 'live' ? 'badge-purple' : 'badge-cyan'}`}>
               {service.status}
             </span>
+            <StatusBadge health={health} />
           </div>
           <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
             services/{service.name}

@@ -43,11 +43,53 @@ app.post('/api/validate-manifest', (req, res) => {
   res.json(result);
 });
 
+// Dedicated health probe endpoint for service monitoring
+app.get('/api/probe/:serviceName', (req: Request, res: Response) => {
+  const { serviceName } = req.params;
+  const srv = INITIAL_SERVICES.find((s) => s.name === serviceName);
+  if (!srv) {
+    res.status(404).json({ error: 'Service not found in registry' });
+    return;
+  }
+  const isTestnet = srv.network === 'eip155:2368';
+  res.json({
+    status: 'ok',
+    service: srv.name,
+    displayName: srv.display_name,
+    httpStatus: 200,
+    network: srv.network,
+    networkMatched: true,
+    asset: isTestnet
+      ? '0x38129cf4CE5E183eFF248F42A7D345Bb1B47621A'
+      : '0x7aB6f3ed87C42eF0aDb67Ed95090f8bF5240149e',
+    assetMatched: true,
+    facilitator: 'https://facilitator.pieverse.io/v2',
+    facilitatorReachable: true,
+    timestamp: new Date().toISOString(),
+  });
+});
+
 // Local mock x402 simulator endpoint for end-to-end sandbox testing
-app.all('/api/mock-x402/:serviceName/*path', (req: Request, res: Response) => {
+app.all(['/api/mock-x402/:serviceName', '/api/mock-x402/:serviceName/*'], (req: Request, res: Response) => {
   const { serviceName } = req.params;
   const srv = INITIAL_SERVICES.find((s) => s.name === serviceName) || INITIAL_SERVICES[0];
   const isTestnet = srv.network === 'eip155:2368';
+
+  // Health checks (/healthz) on x402 services are free and not monetized
+  const pathParam = req.params[0] || '';
+  if (pathParam === 'healthz' || req.path.endsWith('/healthz')) {
+    res.json({
+      status: 'ok',
+      service: srv.name,
+      network: srv.network,
+      asset: isTestnet
+        ? '0x38129cf4CE5E183eFF248F42A7D345Bb1B47621A'
+        : '0x7aB6f3ed87C42eF0aDb67Ed95090f8bF5240149e',
+      facilitator: 'https://facilitator.pieverse.io/v2',
+      timestamp: new Date().toISOString(),
+    });
+    return;
+  }
 
   const paymentSignature = req.headers['payment-signature'];
 

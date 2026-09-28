@@ -5,13 +5,15 @@ import type { X402ChallengePayload } from '../../types/x402.js';
 import { WalletConnector, type WalletSigner } from './WalletConnector.js';
 import { ProtocolVisualizer } from './ProtocolVisualizer.js';
 import { createSignedEIP3009Payload } from '../../lib/eip3009.js';
-import { CheckCircle2, RefreshCw, AlertTriangle, ShieldCheck } from 'lucide-react';
+import { CheckCircle2, RefreshCw, AlertTriangle, ShieldCheck, History } from 'lucide-react';
+import { saveProof } from '../../services/proof-logger.js';
 
 interface PlaygroundViewProps {
   services: ServiceManifest[];
   selectedService: ServiceManifest | null;
   selectedEndpoint: ServiceEndpoint | null;
   onSelectService: (srv: ServiceManifest) => void;
+  onOpenProofLogs?: () => void;
 }
 
 export const PlaygroundView: React.FC<PlaygroundViewProps> = ({
@@ -19,6 +21,7 @@ export const PlaygroundView: React.FC<PlaygroundViewProps> = ({
   selectedService: initialService,
   selectedEndpoint: initialEndpoint,
   onSelectService,
+  onOpenProofLogs,
 }) => {
   const [currentService, setCurrentService] = useState<ServiceManifest>(initialService || services[0]);
   const [currentEndpoint, setCurrentEndpoint] = useState<ServiceEndpoint>(
@@ -165,33 +168,63 @@ export const PlaygroundView: React.FC<PlaygroundViewProps> = ({
     }
   };
 
+  const extractAuthFromSig = () => {
+    if (!simulatedSignature) return undefined;
+    try {
+      const parsed = JSON.parse(atob(simulatedSignature));
+      return parsed.authorization;
+    } catch {
+      return undefined;
+    }
+  };
+
   // Step 3: Settle with PAYMENT-SIGNATURE and retrieve 200 OK (with failure protection handling)
   const handleSendPaidRequest = async () => {
     if (!simulatedSignature) return;
     setLoading(true);
+    const auth = extractAuthFromSig();
 
     // 1. Simulate Edge Case: Upstream 502 Failure
     if (errorMode === 'upstream-502') {
       setTimeout(() => {
         setResponseStatus(502);
         setTxHash('');
-        setResponseBody(
-          JSON.stringify(
-            {
-              error: 'upstream_unreachable',
-              status: 502,
-              detail: 'Upstream server returned HTTP 502. Facilitator settlement aborted.',
-              safety_guarantee:
-                'Kite x402 Protocol Rule: Settle only after upstream succeeds. Zero funds were deducted from buyer wallet.',
-              settlement: {
-                settled: false,
-                reason: 'upstream_status_ge_400',
-              },
-            },
-            null,
-            2
-          )
-        );
+        const errorDetail = {
+          error: 'upstream_unreachable',
+          status: 502,
+          detail: 'Upstream server returned HTTP 502. Facilitator settlement aborted.',
+          safety_guarantee:
+            'Kite x402 Protocol Rule: Settle only after upstream succeeds. Zero funds were deducted from buyer wallet.',
+          settlement: {
+            settled: false,
+            reason: 'upstream_status_ge_400',
+          },
+        };
+        setResponseBody(JSON.stringify(errorDetail, null, 2));
+
+        saveProof({
+          serviceName: currentService.name,
+          serviceDisplayName: currentService.display_name,
+          endpointPath: currentEndpoint.path,
+          httpMethod: currentEndpoint.method,
+          network: currentService.network,
+          tokenSymbol: currentService.network === 'eip155:2368' ? 'pieUSD' : 'USDC.e',
+          tokenAddress:
+            challengePayload?.accepts[0]?.asset ||
+            (currentService.network === 'eip155:2368'
+              ? '0x38129cf4CE5E183eFF248F42A7D345Bb1B47621A'
+              : '0x7aB6f3ed87C42eF0aDb67Ed95090f8bF5240149e'),
+          amountFormatted: `${currentEndpoint.price_usd} USD`,
+          amountRaw: challengePayload?.accepts[0]?.amount || '1000000000000000',
+          payerAddress: activeSigner?.address || auth?.from || '0x0000000000000000000000000000000000000000',
+          payToAddress: currentService.pay_to,
+          status: 'aborted_502',
+          signedAuthorizationPayload: simulatedSignature,
+          eip3009Details: auth,
+          responseStatus: 502,
+          responseBodySnippet: JSON.stringify(errorDetail),
+        });
+
         setLoading(false);
       }, 600);
       return;
@@ -202,21 +235,40 @@ export const PlaygroundView: React.FC<PlaygroundViewProps> = ({
       setTimeout(() => {
         setResponseStatus(400);
         setTxHash('');
-        setResponseBody(
-          JSON.stringify(
-            {
-              error: 'facilitator_rejected',
-              status: 400,
-              detail: 'Signature validBefore deadline has passed.',
-              settlement: {
-                settled: false,
-                reason: 'signature_expired',
-              },
-            },
-            null,
-            2
-          )
-        );
+        const expiredDetail = {
+          error: 'facilitator_rejected',
+          status: 400,
+          detail: 'Signature validBefore deadline has passed.',
+          settlement: {
+            settled: false,
+            reason: 'signature_expired',
+          },
+        };
+        setResponseBody(JSON.stringify(expiredDetail, null, 2));
+
+        saveProof({
+          serviceName: currentService.name,
+          serviceDisplayName: currentService.display_name,
+          endpointPath: currentEndpoint.path,
+          httpMethod: currentEndpoint.method,
+          network: currentService.network,
+          tokenSymbol: currentService.network === 'eip155:2368' ? 'pieUSD' : 'USDC.e',
+          tokenAddress:
+            challengePayload?.accepts[0]?.asset ||
+            (currentService.network === 'eip155:2368'
+              ? '0x38129cf4CE5E183eFF248F42A7D345Bb1B47621A'
+              : '0x7aB6f3ed87C42eF0aDb67Ed95090f8bF5240149e'),
+          amountFormatted: `${currentEndpoint.price_usd} USD`,
+          amountRaw: challengePayload?.accepts[0]?.amount || '1000000000000000',
+          payerAddress: activeSigner?.address || auth?.from || '0x0000000000000000000000000000000000000000',
+          payToAddress: currentService.pay_to,
+          status: 'expired_sig',
+          signedAuthorizationPayload: simulatedSignature,
+          eip3009Details: auth,
+          responseStatus: 400,
+          responseBodySnippet: JSON.stringify(expiredDetail),
+        });
+
         setLoading(false);
       }, 600);
       return;
@@ -248,32 +300,74 @@ export const PlaygroundView: React.FC<PlaygroundViewProps> = ({
       setResponseStatus(res.status);
       setResponseBody(JSON.stringify(body, null, 2));
 
-      if (extractedTx) {
-        setTxHash(extractedTx);
-      } else if (body.settlement?.txHash) {
-        setTxHash(body.settlement.txHash);
+      const settledTx = extractedTx || body.settlement?.txHash || '';
+      if (settledTx) {
+        setTxHash(settledTx);
       }
+
+      saveProof({
+        serviceName: currentService.name,
+        serviceDisplayName: currentService.display_name,
+        endpointPath: currentEndpoint.path,
+        httpMethod: currentEndpoint.method,
+        network: currentService.network,
+        tokenSymbol: currentService.network === 'eip155:2368' ? 'pieUSD' : 'USDC.e',
+        tokenAddress:
+          challengePayload?.accepts[0]?.asset ||
+          (currentService.network === 'eip155:2368'
+            ? '0x38129cf4CE5E183eFF248F42A7D345Bb1B47621A'
+            : '0x7aB6f3ed87C42eF0aDb67Ed95090f8bF5240149e'),
+        amountFormatted: `${currentEndpoint.price_usd} USD`,
+        amountRaw: challengePayload?.accepts[0]?.amount || '1000000000000000',
+        payerAddress: activeSigner?.address || auth?.from || '0x0000000000000000000000000000000000000000',
+        payToAddress: currentService.pay_to,
+        status: 'settled',
+        txHash: settledTx || undefined,
+        signedAuthorizationPayload: simulatedSignature,
+        eip3009Details: auth,
+        responseStatus: res.status,
+        responseBodySnippet: JSON.stringify(body),
+      });
     } catch {
       // Fallback response simulation
       const fallbackTx = '0x' + Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
       setTxHash(fallbackTx);
       setResponseStatus(200);
-      setResponseBody(
-        JSON.stringify(
-          {
-            success: true,
-            service: currentService.name,
-            result: `Service executed successfully behind Kite x402 reverse proxy.`,
-            settlement: {
-              facilitator: 'https://facilitator.pieverse.io/v2',
-              txHash: fallbackTx,
-              settledOnChain: true,
-            },
-          },
-          null,
-          2
-        )
-      );
+      const fallbackData = {
+        success: true,
+        service: currentService.name,
+        result: `Service executed successfully behind Kite x402 reverse proxy.`,
+        settlement: {
+          facilitator: 'https://facilitator.pieverse.io/v2',
+          txHash: fallbackTx,
+          settledOnChain: true,
+        },
+      };
+      setResponseBody(JSON.stringify(fallbackData, null, 2));
+
+      saveProof({
+        serviceName: currentService.name,
+        serviceDisplayName: currentService.display_name,
+        endpointPath: currentEndpoint.path,
+        httpMethod: currentEndpoint.method,
+        network: currentService.network,
+        tokenSymbol: currentService.network === 'eip155:2368' ? 'pieUSD' : 'USDC.e',
+        tokenAddress:
+          challengePayload?.accepts[0]?.asset ||
+          (currentService.network === 'eip155:2368'
+            ? '0x38129cf4CE5E183eFF248F42A7D345Bb1B47621A'
+            : '0x7aB6f3ed87C42eF0aDb67Ed95090f8bF5240149e'),
+        amountFormatted: `${currentEndpoint.price_usd} USD`,
+        amountRaw: challengePayload?.accepts[0]?.amount || '1000000000000000',
+        payerAddress: activeSigner?.address || auth?.from || '0x0000000000000000000000000000000000000000',
+        payToAddress: currentService.pay_to,
+        status: 'settled',
+        txHash: fallbackTx,
+        signedAuthorizationPayload: simulatedSignature,
+        eip3009Details: auth,
+        responseStatus: 200,
+        responseBodySnippet: JSON.stringify(fallbackData),
+      });
     } finally {
       setLoading(false);
     }
@@ -281,13 +375,25 @@ export const PlaygroundView: React.FC<PlaygroundViewProps> = ({
 
   return (
     <div style={{ maxWidth: '1080px', margin: '0 auto' }}>
-      <div style={{ marginBottom: '2rem' }}>
-        <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '2rem', fontWeight: 800, marginBottom: '0.5rem' }}>
-          Interactive <span>x402 Protocol Playground</span>
-        </h2>
-        <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem' }}>
-          Step-by-step walkthrough of how an autonomous Agent discovers an HTTP 402 challenge, signs an EIP-3009 transfer authorization, and gets a verified 200 OK with on-chain settlement.
-        </p>
+      <div style={{ marginBottom: '2rem', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
+        <div>
+          <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '2rem', fontWeight: 800, marginBottom: '0.5rem' }}>
+            Interactive <span>x402 Protocol Playground</span>
+          </h2>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem' }}>
+            Step-by-step walkthrough of how an autonomous Agent discovers an HTTP 402 challenge, signs an EIP-3009 transfer authorization, and gets a verified 200 OK with on-chain settlement.
+          </p>
+        </div>
+        {Boolean(onOpenProofLogs) && (
+          <button
+            className="btn btn-secondary"
+            onClick={onOpenProofLogs}
+            style={{ fontSize: '0.82rem', padding: '0.5rem 0.9rem', display: 'flex', alignItems: 'center', gap: '6px' }}
+          >
+            <History size={15} />
+            <span>Audit Proof Logs</span>
+          </button>
+        )}
       </div>
 
       {/* Target Selector & Error Simulation Bar */}
@@ -613,6 +719,12 @@ export const PlaygroundView: React.FC<PlaygroundViewProps> = ({
         responseStatus={responseStatus}
         txHash={txHash}
         network={currentService.network}
+        serviceName={currentService.name}
+        serviceDisplayName={currentService.display_name}
+        endpointPath={currentEndpoint.path}
+        httpMethod={currentEndpoint.method}
+        payerAddress={activeSigner?.address}
+        onOpenProofLogs={onOpenProofLogs}
       />
     </div>
   );

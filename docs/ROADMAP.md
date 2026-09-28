@@ -28,13 +28,13 @@ This document tracks the milestones and weekly releases for **Kite x402 Explorer
 
 ---
 
-## 📅 Week 3: Health Probing Engine, Latency Metrics & Proof Logs [UPCOMING - WEEKLY SPRINT 1]
+## 📅 Week 3: Health Probing Engine, Latency Metrics & Proof Logs [COMPLETED]
 
-- [ ] **Health Prober Engine**: Automated `/healthz` prober checking upstream latency, network matching, and asset consistency.
-- [ ] **Live Status Badges**: Real-time status indicators (Healthy / Degraded / Down) and latency metrics on cards and drawers.
-- [ ] **Global Probing Controls**: One-click batch probing and auto-refresh intervals.
-- [ ] **Persistent Proof Logs**: Local storage audit history tracking past 402 challenges, signed authorizations, and settlement tx hashes.
-- [ ] **Receipt Exporter**: Downloadable verifiable JSON payment receipts for agent-to-service auditing.
+- [x] **Health Prober Engine**: Automated `/healthz` prober checking upstream latency, network matching, and asset consistency.
+- [x] **Live Status Badges**: Real-time status indicators (Healthy / Degraded / Down) and latency metrics on cards and drawers.
+- [x] **Global Probing Controls**: One-click batch probing and auto-refresh intervals.
+- [x] **Persistent Proof Logs**: Local storage audit history tracking past 402 challenges, signed authorizations, and settlement tx hashes.
+- [x] **Receipt Exporter**: Downloadable verifiable JSON payment receipts for agent-to-service auditing.
 
 **Weekly Release Target**:
 `feat: implement service health probing engine, live latency badges, and persistent proof logs`

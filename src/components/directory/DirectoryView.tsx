@@ -1,10 +1,16 @@
 import React, { useState, useMemo } from 'react';
 import type { ServiceManifest, ServiceCategory, ServiceStatus } from '../../types/service.js';
+import type { ServiceHealthStatus, HealthAutoRefreshInterval, HealthStatusType } from '../../types/health.js';
 import { ServiceCard } from './ServiceCard.js';
-import { Search, Sparkles, ArrowUpDown, X, Layers } from 'lucide-react';
+import { Search, Sparkles, ArrowUpDown, X, Layers, Activity, RefreshCw } from 'lucide-react';
 
 interface DirectoryViewProps {
   services: ServiceManifest[];
+  healthMap: Record<string, ServiceHealthStatus>;
+  isProbing: boolean;
+  onRunBatchProbe: () => Promise<void>;
+  autoRefreshInterval: HealthAutoRefreshInterval;
+  onChangeAutoRefresh: (sec: HealthAutoRefreshInterval) => void;
   selectedNetwork: 'all' | 'testnet' | 'mainnet';
   onSelectService: (service: ServiceManifest) => void;
   onOpenPlayground: (service: ServiceManifest) => void;
@@ -20,10 +26,15 @@ const CATEGORIES: { id: ServiceCategory | 'all'; label: string }[] = [
   { id: 'web', label: 'Web Services' },
 ];
 
-type SortOption = 'price-asc' | 'price-desc' | 'endpoints' | 'name';
+type SortOption = 'price-asc' | 'price-desc' | 'endpoints' | 'latency-asc' | 'name';
 
 export const DirectoryView: React.FC<DirectoryViewProps> = ({
   services,
+  healthMap,
+  isProbing,
+  onRunBatchProbe,
+  autoRefreshInterval,
+  onChangeAutoRefresh,
   selectedNetwork,
   onSelectService,
   onOpenPlayground,
@@ -31,7 +42,39 @@ export const DirectoryView: React.FC<DirectoryViewProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<ServiceCategory | 'all'>('all');
   const [selectedStatus, setSelectedStatus] = useState<ServiceStatus | 'all'>('all');
+  const [selectedHealth, setSelectedHealth] = useState<HealthStatusType | 'all'>('all');
   const [sortBy, setSortBy] = useState<SortOption>('price-asc');
+
+  // Compute telemetry metrics across loaded services
+  const { healthyCount, degradedCount, downCount, avgLatency } = useMemo(() => {
+    let healthy = 0;
+    let degraded = 0;
+    let down = 0;
+    let totalLatency = 0;
+    let countWithLatency = 0;
+
+    for (const srv of services) {
+      const h = healthMap[srv.name];
+      if (h) {
+        if (h.status === 'healthy') healthy++;
+        else if (h.status === 'degraded') degraded++;
+        else if (h.status === 'down') down++;
+
+        if (h.latencyMs > 0) {
+          totalLatency += h.latencyMs;
+          countWithLatency++;
+        }
+      }
+    }
+
+    const avg = countWithLatency > 0 ? Math.round(totalLatency / countWithLatency) : 0;
+    return {
+      healthyCount: healthy,
+      degradedCount: degraded,
+      downCount: down,
+      avgLatency: avg,
+    };
+  }, [services, healthMap]);
 
   const filteredServices = useMemo(() => {
     return services
@@ -45,6 +88,13 @@ export const DirectoryView: React.FC<DirectoryViewProps> = ({
 
         // Category filter
         if (selectedCategory !== 'all' && !srv.categories.includes(selectedCategory)) return false;
+
+        // Health filter
+        if (selectedHealth !== 'all') {
+          const h = healthMap[srv.name];
+          if (!h && selectedHealth !== 'unprobed') return false;
+          if (h && h.status !== selectedHealth) return false;
+        }
 
         // Search query
         if (searchQuery.trim()) {
@@ -65,17 +115,35 @@ export const DirectoryView: React.FC<DirectoryViewProps> = ({
         if (sortBy === 'price-asc') return getMinPrice(a) - getMinPrice(b);
         if (sortBy === 'price-desc') return getMinPrice(b) - getMinPrice(a);
         if (sortBy === 'endpoints') return b.endpoints.length - a.endpoints.length;
+        if (sortBy === 'latency-asc') {
+          const latA = healthMap[a.name]?.latencyMs ?? 9999;
+          const latB = healthMap[b.name]?.latencyMs ?? 9999;
+          return latA - latB;
+        }
         if (sortBy === 'name') return a.display_name.localeCompare(b.display_name);
         return 0;
       });
-  }, [services, selectedNetwork, selectedStatus, selectedCategory, searchQuery, sortBy]);
+  }, [
+    services,
+    selectedNetwork,
+    selectedStatus,
+    selectedCategory,
+    selectedHealth,
+    searchQuery,
+    sortBy,
+    healthMap,
+  ]);
 
   const hasActiveFilters =
-    selectedCategory !== 'all' || selectedStatus !== 'all' || searchQuery.trim().length > 0;
+    selectedCategory !== 'all' ||
+    selectedStatus !== 'all' ||
+    selectedHealth !== 'all' ||
+    searchQuery.trim().length > 0;
 
   const handleClearFilters = () => {
     setSelectedCategory('all');
     setSelectedStatus('all');
+    setSelectedHealth('all');
     setSearchQuery('');
   };
 
@@ -144,6 +212,129 @@ export const DirectoryView: React.FC<DirectoryViewProps> = ({
         </div>
       </section>
 
+      {/* Global Probing & Telemetry Bar */}
+      <div
+        style={{
+          background: 'rgba(7, 9, 14, 0.6)',
+          border: '1px solid var(--border-glass)',
+          borderRadius: 'var(--radius-md)',
+          padding: '0.75rem 1.25rem',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '1rem',
+          marginBottom: '1.5rem',
+        }}
+      >
+        {/* Left: Summary Metrics */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <Activity size={16} color="var(--accent-cyan)" />
+            <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+              Live Telemetry
+            </span>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.78rem' }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--accent-emerald)' }}>
+              <span
+                style={{
+                  width: '6px',
+                  height: '6px',
+                  borderRadius: '50%',
+                  background: 'var(--accent-emerald)',
+                  display: 'inline-block',
+                }}
+              />
+              {healthyCount} Healthy
+            </span>
+            {degradedCount > 0 && (
+              <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--accent-amber)' }}>
+                <span
+                  style={{
+                    width: '6px',
+                    height: '6px',
+                    borderRadius: '50%',
+                    background: 'var(--accent-amber)',
+                    display: 'inline-block',
+                  }}
+                />
+                {degradedCount} Degraded
+              </span>
+            )}
+            {downCount > 0 && (
+              <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--accent-rose)' }}>
+                <span
+                  style={{
+                    width: '6px',
+                    height: '6px',
+                    borderRadius: '50%',
+                    background: 'var(--accent-rose)',
+                    display: 'inline-block',
+                  }}
+                />
+                {downCount} Offline
+              </span>
+            )}
+            <span style={{ color: 'var(--text-muted)' }}>•</span>
+            <span style={{ color: 'var(--text-secondary)' }}>
+              Avg Latency:{' '}
+              <strong style={{ color: 'var(--accent-cyan)', fontFamily: 'var(--font-mono)' }}>
+                {avgLatency > 0 ? `${avgLatency}ms` : '--'}
+              </strong>
+            </span>
+          </div>
+        </div>
+
+        {/* Right: Probing Actions */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          {/* Auto-refresh interval */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+            <span>Auto-refresh:</span>
+            <select
+              value={autoRefreshInterval}
+              onChange={(e) => onChangeAutoRefresh(Number(e.target.value) as HealthAutoRefreshInterval)}
+              style={{
+                background: 'var(--bg-secondary)',
+                border: '1px solid var(--border-glass)',
+                color: 'var(--text-primary)',
+                borderRadius: 'var(--radius-sm)',
+                padding: '2px 6px',
+                fontSize: '0.75rem',
+                outline: 'none',
+              }}
+            >
+              <option value={0}>Off</option>
+              <option value={15}>15s</option>
+              <option value={30}>30s</option>
+              <option value={60}>60s</option>
+            </select>
+          </div>
+
+          {/* Run Probes Button */}
+          <button
+            className="btn btn-secondary"
+            onClick={onRunBatchProbe}
+            disabled={isProbing}
+            style={{
+              fontSize: '0.78rem',
+              padding: '0.35rem 0.75rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+            }}
+            title="Ping /healthz on all registered services"
+          >
+            <RefreshCw
+              size={13}
+              style={{ animation: isProbing ? 'spin 1s linear infinite' : 'none' }}
+            />
+            <span>{isProbing ? 'Probing Endpoints...' : 'Probe All Healthz'}</span>
+          </button>
+        </div>
+      </div>
+
       {/* Control Bar: Categories, Status & Sorting */}
       <div
         style={{
@@ -185,7 +376,7 @@ export const DirectoryView: React.FC<DirectoryViewProps> = ({
           ))}
         </div>
 
-        {/* Row 2: Status, Sorting & Results */}
+        {/* Row 2: Status, Health, Sorting & Results */}
         <div
           style={{
             display: 'flex',
@@ -216,6 +407,30 @@ export const DirectoryView: React.FC<DirectoryViewProps> = ({
                   }}
                 >
                   {st}
+                </button>
+              ))}
+            </div>
+
+            {/* Health filter pills */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 600 }}>HEALTH:</span>
+              {(['all', 'healthy', 'degraded', 'down'] as const).map((hl) => (
+                <button
+                  key={hl}
+                  onClick={() => setSelectedHealth(hl)}
+                  style={{
+                    padding: '2px 8px',
+                    borderRadius: 'var(--radius-sm)',
+                    fontSize: '0.75rem',
+                    fontWeight: 600,
+                    textTransform: 'capitalize',
+                    border: selectedHealth === hl ? '1px solid var(--accent-cyan)' : '1px solid var(--border-glass)',
+                    background: selectedHealth === hl ? 'rgba(0, 245, 255, 0.15)' : 'transparent',
+                    color: selectedHealth === hl ? 'var(--accent-cyan)' : 'var(--text-muted)',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {hl}
                 </button>
               ))}
             </div>
@@ -257,6 +472,7 @@ export const DirectoryView: React.FC<DirectoryViewProps> = ({
               >
                 <option value="price-asc">Lowest Price</option>
                 <option value="price-desc">Highest Price</option>
+                <option value="latency-asc">Fastest Latency</option>
                 <option value="endpoints">Most Endpoints</option>
                 <option value="name">Service Name (A-Z)</option>
               </select>
@@ -282,6 +498,7 @@ export const DirectoryView: React.FC<DirectoryViewProps> = ({
             <ServiceCard
               key={srv.name}
               service={srv}
+              health={healthMap[srv.name]}
               onSelectService={onSelectService}
               onOpenPlayground={onOpenPlayground}
             />
@@ -297,7 +514,7 @@ export const DirectoryView: React.FC<DirectoryViewProps> = ({
             No x402 services found matching your filters.
           </p>
           <p style={{ fontSize: '0.9rem', maxWidth: '420px', margin: '0 auto 1.5rem' }}>
-            Try resetting your category or network filters, or search with different keywords.
+            Try resetting your category, network, or health filters, or search with different keywords.
           </p>
           <button className="btn btn-secondary" onClick={handleClearFilters}>
             Clear All Filters

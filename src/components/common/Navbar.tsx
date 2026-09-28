@@ -1,5 +1,5 @@
 import React from 'react';
-import { Compass, Terminal, BookOpen } from 'lucide-react';
+import { Compass, Terminal, BookOpen, ShieldCheck } from 'lucide-react';
 
 export type NavTab = 'directory' | 'playground' | 'docs';
 
@@ -8,6 +8,8 @@ interface NavbarProps {
   onSelectTab: (tab: NavTab) => void;
   selectedNetwork: 'all' | 'testnet' | 'mainnet';
   onSelectNetwork: (net: 'all' | 'testnet' | 'mainnet') => void;
+  proofCount?: number;
+  onOpenProofLogs?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -15,6 +17,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   onSelectTab,
   selectedNetwork,
   onSelectNetwork,
+  proofCount = 0,
+  onOpenProofLogs,
 }) => {
   return (
     <header className="navbar">
@@ -109,6 +113,40 @@ export const Navbar: React.FC<NavbarProps> = ({
             <span className="dot-indicator" />
             <span>Kite eip155</span>
           </div>
+
+          {Boolean(onOpenProofLogs) && (
+            <button
+              onClick={onOpenProofLogs}
+              className="btn btn-secondary"
+              style={{
+                fontSize: '0.75rem',
+                padding: '5px 10px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                background: 'var(--bg-secondary)',
+                border: '1px solid var(--border-glass)',
+              }}
+              title="Inspect persistent payment proof logs"
+            >
+              <ShieldCheck size={14} color="var(--accent-cyan)" />
+              <span>Proofs</span>
+              {typeof proofCount === 'number' && proofCount > 0 && (
+                <span
+                  style={{
+                    background: 'rgba(0, 245, 255, 0.2)',
+                    color: 'var(--accent-cyan)',
+                    padding: '1px 6px',
+                    borderRadius: '10px',
+                    fontSize: '0.68rem',
+                    fontWeight: 700,
+                  }}
+                >
+                  {proofCount}
+                </span>
+              )}
+            </button>
+          )}
         </div>
       </div>
     </header>
