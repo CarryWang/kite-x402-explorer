@@ -3,6 +3,8 @@ import { Navbar, type NavTab } from './components/common/Navbar.js';
 import { DirectoryView } from './components/directory/DirectoryView.js';
 import { ServiceDetailModal } from './components/directory/ServiceDetailModal.js';
 import { PlaygroundView } from './components/playground/PlaygroundView.js';
+import { ManifestBuilderView } from './components/builder/ManifestBuilderView.js';
+import { TestnetE2ESuite } from './components/e2e/TestnetE2ESuite.js';
 import { DocsView } from './components/docs/DocsView.js';
 import { ProofLogDrawer } from './components/common/ProofLogDrawer.js';
 import { INITIAL_SERVICES } from './services/sample-services.js';
@@ -18,7 +20,7 @@ import { getStoredProofs, subscribeToProofs } from './services/proof-logger.js';
 export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<NavTab>('directory');
   const [selectedNetwork, setSelectedNetwork] = useState<'all' | 'testnet' | 'mainnet'>('all');
-  const [services] = useState<ServiceManifest[]>(INITIAL_SERVICES);
+  const [services, setServices] = useState<ServiceManifest[]>(INITIAL_SERVICES);
   const [selectedService, setSelectedService] = useState<ServiceManifest | null>(null);
   const [playgroundTarget, setPlaygroundTarget] = useState<{
     service: ServiceManifest;
@@ -81,6 +83,22 @@ export const App: React.FC = () => {
     setActiveTab('playground');
   };
 
+  const handleTestInPlayground = (manifest: ServiceManifest) => {
+    setServices((prev) => {
+      const exists = prev.some((s) => s.name === manifest.name);
+      return exists ? prev.map((s) => (s.name === manifest.name ? manifest : s)) : [manifest, ...prev];
+    });
+    setPlaygroundTarget({ service: manifest, endpoint: manifest.endpoints[0] });
+    setActiveTab('playground');
+  };
+
+  const handleAddToDirectory = (manifest: ServiceManifest) => {
+    setServices((prev) => {
+      const exists = prev.some((s) => s.name === manifest.name);
+      return exists ? prev.map((s) => (s.name === manifest.name ? manifest : s)) : [manifest, ...prev];
+    });
+  };
+
   return (
     <div className="app-container">
       <Navbar
@@ -116,6 +134,15 @@ export const App: React.FC = () => {
             onOpenProofLogs={() => setIsProofDrawerOpen(true)}
           />
         )}
+
+        {activeTab === 'builder' && (
+          <ManifestBuilderView
+            onTestInPlayground={handleTestInPlayground}
+            onAddToDirectory={handleAddToDirectory}
+          />
+        )}
+
+        {activeTab === 'e2e' && <TestnetE2ESuite />}
 
         {activeTab === 'docs' && <DocsView />}
       </main>

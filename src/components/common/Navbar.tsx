@@ -1,7 +1,7 @@
 import React from 'react';
-import { Compass, Terminal, BookOpen, ShieldCheck } from 'lucide-react';
+import { Compass, Terminal, BookOpen, ShieldCheck, FileCode, Zap } from 'lucide-react';
 
-export type NavTab = 'directory' | 'playground' | 'docs';
+export type NavTab = 'directory' | 'playground' | 'builder' | 'e2e' | 'docs';
 
 interface NavbarProps {
   activeTab: NavTab;
@@ -49,6 +49,22 @@ export const Navbar: React.FC<NavbarProps> = ({
           >
             <Terminal size={16} style={{ marginRight: '6px', verticalAlign: 'middle' }} />
             x402 Playground
+          </button>
+          <button
+            className={`nav-item ${activeTab === 'builder' ? 'active' : ''}`}
+            onClick={() => onSelectTab('builder')}
+            style={{ background: 'none', border: 'none' }}
+          >
+            <FileCode size={16} style={{ marginRight: '6px', verticalAlign: 'middle' }} />
+            Manifest Builder
+          </button>
+          <button
+            className={`nav-item ${activeTab === 'e2e' ? 'active' : ''}`}
+            onClick={() => onSelectTab('e2e')}
+            style={{ background: 'none', border: 'none' }}
+          >
+            <Zap size={16} style={{ marginRight: '6px', verticalAlign: 'middle' }} />
+            Testnet E2E Suite
           </button>
           <button
             className={`nav-item ${activeTab === 'docs' ? 'active' : ''}`}

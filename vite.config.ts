@@ -18,4 +18,17 @@ export default defineConfig({
       },
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom'],
+          'vendor-viem': ['viem'],
+          'vendor-ajv': ['ajv', 'ajv-formats'],
+          'vendor-yaml': ['js-yaml'],
+        },
+      },
+    },
+    chunkSizeWarningLimit: 800,
+  },
 });

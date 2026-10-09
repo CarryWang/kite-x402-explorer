@@ -41,13 +41,13 @@ This document tracks the milestones and weekly releases for **Kite x402 Explorer
 
 ---
 
-## 📅 Week 4: Manifest Visual Builder, Testnet E2E & Production Release [UPCOMING - WEEKLY SPRINT 2]
+## 📅 Week 4: Manifest Visual Builder, Testnet E2E & Production Release [COMPLETED]
 
-- [ ] **Manifest Visual Builder**: "Register New Service" interactive form with instant field linting.
-- [ ] **Real-Time Schema Validation**: Inline error and warning feedback against `service.schema.json`.
-- [ ] **One-Click PR Export**: Formatted, PR-ready `service.yaml` generator with Kite repository submission guide.
-- [ ] **Kite Testnet E2E Suite**: Live on-chain pieUSD transaction run on Kite Testnet (eip155:2368).
-- [ ] **Production Go-Live**: Bundle optimization, Dockerfile, static deployment configs, and open-source documentation.
+- [x] **Manifest Visual Builder**: "Register New Service" interactive form with instant field linting.
+- [x] **Real-Time Schema Validation**: Inline error and warning feedback against `service.schema.json`.
+- [x] **One-Click PR Export**: Formatted, PR-ready `service.yaml` generator with Kite repository submission guide.
+- [x] **Kite Testnet E2E Suite**: Live on-chain pieUSD transaction run on Kite Testnet (eip155:2368).
+- [x] **Production Go-Live**: Bundle optimization, Dockerfile, static deployment configs, and open-source documentation.
 
 **Weekly Release Target**:
 `feat: add manifest visual builder, testnet e2e suite, and production deployment bundle`

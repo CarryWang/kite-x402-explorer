@@ -199,6 +199,23 @@ app.all('/api/proxy', async (req: Request, res: Response) => {
   }
 });
 
+// Production static file serving
+import path from 'path';
+import { fileURLToPath } from 'url';
+import fs from 'fs';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const distPath = path.resolve(__dirname, '../dist');
+
+if (fs.existsSync(distPath)) {
+  app.use(express.static(distPath));
+  app.get('*', (req: Request, res: Response, next) => {
+    if (req.path.startsWith('/api')) return next();
+    res.sendFile(path.join(distPath, 'index.html'));
+  });
+}
+
 app.listen(port, () => {
   console.log(`[Kite x402 Proxy & Simulator] Listening on http://localhost:${port}`);
 });
