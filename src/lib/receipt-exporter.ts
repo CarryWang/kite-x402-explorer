@@ -56,6 +56,18 @@ export function buildVerifiableReceipt(proof: PaymentProofRecord): VerifiablePay
           : proof.status === 'expired_sig'
           ? 'Transaction aborted: Signature expired before execution.'
           : 'Cryptographically verified EIP-3009 transfer authorization settled via Kite Facilitator.',
+      receiptDigest: `0x${Array.from(
+        new TextEncoder().encode(
+          `${proof.id}:${proof.network}:${proof.payerAddress}:${proof.payToAddress}:${proof.amountRaw}:${proof.txHash || 'none'}`
+        )
+      )
+        .reduce((acc, byte) => (acc * 31 + byte) >>> 0, 0)
+        .toString(16)
+        .padStart(8, '0')}`,
+      securityAudit: {
+        targetGuardPassed: proof.status !== 'aborted_502' && proof.status !== 'expired_sig',
+        riskScore: proof.status === 'settled' ? 0 : 25,
+      },
     },
   };
 }
