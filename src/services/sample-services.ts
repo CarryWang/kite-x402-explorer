@@ -193,4 +193,53 @@ export const INITIAL_SERVICES: ServiceManifest[] = [
       },
     ],
   },
+  {
+    schema: 1,
+    name: 'kite-agent-zk-reputation',
+    display_name: 'Zero-Knowledge Agent Reputation & Credit Protocol',
+    description: 'Cryptographic ZK reputation verification and dynamic uncollateralized credit-line micropayment settlement for AI agents on Kite Chain.',
+    maintainer: {
+      github: 'dishonesthero',
+      contact: 'zk-reputation@gokite.ai',
+    },
+    status: 'live',
+    base_url: 'https://reputation.gokite.ai',
+    network: 'eip155:2366',
+    pay_to: '0xcccccccccccccccccccccccccccccccccccccccc',
+    upstream: {
+      name: 'Kite ZK Attestation Oracle',
+      url: 'https://attestation.internal.gokite.ai',
+      requires_api_key: false,
+    },
+    categories: ['ai', 'finance'],
+    tags: ['reputation', 'zk-proof', 'credit', 'attestation', 'x402'],
+    source: 'typescript-express',
+    endpoints: [
+      {
+        method: 'POST',
+        path: '/v1/reputation/verify-proof',
+        summary: 'Verify an autonomous agent ZK reputation proof and compute allowed credit limit.',
+        price_usd: '0.005',
+        example_request: {
+          body: {
+            agent_address: '0x7aB6f3ed87C42eF0aDb67Ed95090f8bF5240149e',
+            reputation_score: 850,
+            nullifier_hash: '0x3a4b5c6d7e8f901234567890abcdef1234567890abcdef1234567890abcdef12',
+          },
+        },
+      },
+      {
+        method: 'POST',
+        path: '/v1/reputation/credit-settle',
+        summary: 'Batch settle consumed credit-line debt and reset available credit line balance.',
+        price_usd: '0.002',
+        example_request: {
+          body: {
+            agent_address: '0x7aB6f3ed87C42eF0aDb67Ed95090f8bF5240149e',
+            settled_amount_wei: '1000000000000000000',
+          },
+        },
+      },
+    ],
+  },
 ];
