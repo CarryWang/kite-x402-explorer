@@ -266,4 +266,52 @@ export const INITIAL_SERVICES: ServiceManifest[] = [
       },
     ],
   },
+  {
+    schema: 1,
+    name: 'kite-x402-target-guard',
+    display_name: 'Kite x402 Target Guard & Pre-Authorization Auditor',
+    description: 'Autonomous pre-signing security gateway, evaluating recipient trust scores, EIP-3009 parameters, and spending caps on Kite chain.',
+    maintainer: {
+      github: 'tediousnonb',
+      contact: 'security@kitedev.org',
+    },
+    status: 'testnet',
+    base_url: 'https://guard.sandbox.gokite.ai',
+    network: 'eip155:2368',
+    pay_to: '0x8888888888888888888888888888888888888888',
+    upstream: {
+      name: 'Target Guard Policy Evaluator',
+      url: 'https://api.guard-policy.internal',
+      requires_api_key: false,
+    },
+    categories: ['ai', 'finance'],
+    tags: ['security', 'guard', 'audit', 'eip-3009', 'x402-firewall'],
+    source: 'typescript-express',
+    endpoints: [
+      {
+        method: 'POST',
+        path: '/v1/guard/evaluate',
+        summary: 'Submit an x402 challenge terms object to get real-time trust scoring and policy pass/fail verdict.',
+        price_usd: '0.001',
+        example_request: {
+          body: {
+            payTo: '0x7aB6f3ed87C42eF0aDb67Ed95090f8bF5240149e',
+            network: 'eip155:2368',
+            amount: '1000000000000000',
+          },
+        },
+      },
+      {
+        method: 'GET',
+        path: '/v1/guard/reputation',
+        summary: 'Query on-chain recipient address trust score, dispute history, and risk rating.',
+        price_usd: '0.0005',
+        example_request: {
+          query: {
+            address: '0x38129cf4CE5E183eFF248F42A7D345Bb1B47621A',
+          },
+        },
+      },
+    ],
+  },
 ];

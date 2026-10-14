@@ -87,5 +87,10 @@ export interface VerifiablePaymentReceipt {
   verification: {
     clientVerified: boolean;
     guaranteeNote: string;
+    receiptDigest?: string;
+    securityAudit?: {
+      targetGuardPassed: boolean;
+      riskScore: number;
+    };
   };
 }
