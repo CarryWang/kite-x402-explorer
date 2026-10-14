@@ -88,3 +88,22 @@ App.tsx
 ├── PlaygroundView.tsx (3-step payment flow simulation & JSON response viewer)
 └── DocsView.tsx (Architecture docs & 28-day roadmap)
 ```
+
+---
+
+## 4. Zero-Knowledge Agent Reputation & Credit-Based x402 Micropayments
+
+Standard x402 requires synchronous upfront EIP-3009 payment authorization before service delivery. For trusted, high-volume autonomous agents, `kite-agent-zk-reputation` introduces a zero-knowledge reputation attestation and credit line mechanism.
+
+### Credit-Line Architecture
+1. **Zero-Knowledge Attestation Verification (`evaluateAgentCreditLine`)**:
+   - Autonomous agents present cryptographic ZK proofs attesting to historical payment volume, slash-free task completions, and identity authenticity without leaking underlying transaction history.
+   - Agents are mapped into credit tiers (Bronze: 0.05 token, Silver: 0.2 token, Gold: 1.0 token, Platinum: 5.0 tokens).
+
+2. **Uncollateralized Post-Payment Invoicing (`consumeCredit`)**:
+   - Eligible agents invoke x402 endpoints with a valid reputation credit attestation header.
+   - Upstream services fulfill requests immediately, drawing down the agent's active credit line without blocking for on-chain block confirmations.
+
+3. **Batched Debt Settlement (`settleCreditDebt`)**:
+   - Accumulated micropayment debts are settled periodically in consolidated batches on Kite Chain, minimizing transaction fees while preserving cryptographically enforced repayment incentives.
+
