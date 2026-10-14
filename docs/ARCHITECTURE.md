@@ -88,3 +88,22 @@ App.tsx
 ├── PlaygroundView.tsx (3-step payment flow simulation & JSON response viewer)
 └── DocsView.tsx (Architecture docs & 28-day roadmap)
 ```
+
+---
+
+## 4. Telemetry Streaming & Batch Multicall Probing
+
+High-throughput autonomous agent networks require sub-second state queries and real-time observability across x402 payment settlements.
+
+### Architecture Overview
+1. **Multicall3 Aggregate Pattern (`0xcA11...CA11`)**:
+   - Compresses hundreds of sequential contract state inspections (e.g. checking agent authorization nonces, token balances, and facilitator parameters) into a single RPC query via canonical Multicall3 `aggregate3`.
+   - Dramatically cuts RPC round-trips and eliminates rate-limiting stalls for swarm agents.
+
+2. **Real-time Settlement Stream (`/v1/telemetry/stream`)**:
+   - `kite-agent-telemetry-indexer` monitors `TransferWithAuthorization` logs emitted across Kite Mainnet (2366) and Testnet (2368).
+   - Delivers low-latency Server-Sent Events (SSE) to connected dashboards, explorers, and downstream settlement triggers.
+
+3. **Batch Endpoint Health Probe (`evaluateEndpointProbe`)**:
+   - Parallel probe evaluating HTTP 402 handshake headers (`PAYMENT-REQUIRED`) and latency thresholds to prevent dispatching agent workloads to degraded endpoints.
+
