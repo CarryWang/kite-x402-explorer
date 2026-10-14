@@ -193,4 +193,56 @@ export const INITIAL_SERVICES: ServiceManifest[] = [
       },
     ],
   },
+  {
+    schema: 1,
+    name: 'kite-agent-data-escrow',
+    display_name: 'AI Dataset Annotation Escrow & Revenue Share',
+    description: 'Quality-weighted revenue sharing and milestone escrow verification for crowdsourced AI dataset contributors on Kite Chain.',
+    maintainer: {
+      github: 'seriousbunch',
+      contact: 'data-escrow@gokite.ai',
+    },
+    status: 'live',
+    base_url: 'https://data-escrow.gokite.ai',
+    network: 'eip155:2366',
+    pay_to: '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+    upstream: {
+      name: 'Kite Dataset Quality Engine',
+      url: 'https://quality.internal.gokite.ai',
+      requires_api_key: false,
+    },
+    categories: ['data', 'ai'],
+    tags: ['dataset', 'annotation', 'revenue-share', 'escrow', 'x402'],
+    source: 'typescript-express',
+    endpoints: [
+      {
+        method: 'POST',
+        path: '/v1/dataset/evaluate-batch',
+        summary: 'Run automated quality audits and benchmark scores across an AI annotation batch.',
+        price_usd: '0.008',
+        example_request: {
+          body: {
+            batch_id: 'batch_synthetic_qa_12',
+            sample_size: 500,
+            rubric: 'factual_accuracy_v2',
+          },
+        },
+      },
+      {
+        method: 'POST',
+        path: '/v1/dataset/split-revenue',
+        summary: 'Compute pro-rata token volume and quality-weighted revenue share matrix for contributors.',
+        price_usd: '0.003',
+        example_request: {
+          body: {
+            total_pool_wei: '2000000000000000000',
+            contributors: [
+              { contributor_address: '0x2B5AD5c4795c026514f8317c7a215E218DcCD6cF', accepted_tokens_count: 15000, quality_score_bps: 9500 },
+              { contributor_address: '0x7aB6f3ed87C42eF0aDb67Ed95090f8bF5240149e', accepted_tokens_count: 8000, quality_score_bps: 8200 },
+            ],
+          },
+        },
+      },
+    ],
+  },
 ];
