@@ -193,4 +193,56 @@ export const INITIAL_SERVICES: ServiceManifest[] = [
       },
     ],
   },
+  {
+    schema: 1,
+    name: 'kite-agent-telemetry-indexer',
+    display_name: 'High-Throughput Telemetry & Multicall Indexer',
+    description: 'Autonomous AI agent telemetry indexing and x402 micropayment event streaming with batch Multicall3 aggregation on Kite Chain.',
+    maintainer: {
+      github: 'untruebattl',
+      contact: 'telemetry-indexer@gokite.ai',
+    },
+    status: 'live',
+    base_url: 'https://telemetry.gokite.ai',
+    network: 'eip155:2366',
+    pay_to: '0x7777777777777777777777777777777777777777',
+    upstream: {
+      name: 'Kite Telemetry Stream Engine',
+      url: 'https://telemetry.internal.gokite.ai',
+      requires_api_key: false,
+    },
+    categories: ['data', 'ai'],
+    tags: ['telemetry', 'indexer', 'multicall', 'stream', 'x402'],
+    source: 'typescript-express',
+    endpoints: [
+      {
+        method: 'GET',
+        path: '/v1/telemetry/stream',
+        summary: 'Server-sent event (SSE) stream of verified x402 micropayment settlement events across Kite Chain.',
+        price_usd: '0.001',
+        example_request: {
+          query: {
+            filter: 'settled_only',
+            limit: '50',
+          },
+        },
+      },
+      {
+        method: 'POST',
+        path: '/v1/telemetry/batch-query',
+        summary: 'Multicall batch query payment authorization status, nonce non-replay records, and receipt summaries.',
+        price_usd: '0.004',
+        example_request: {
+          body: {
+            chain_id: 2366,
+            accounts: [
+              '0x2B5AD5c4795c026514f8317c7a215E218DcCD6cF',
+              '0x7aB6f3ed87C42eF0aDb67Ed95090f8bF5240149e',
+            ],
+            include_nonces: true,
+          },
+        },
+      },
+    ],
+  },
 ];
