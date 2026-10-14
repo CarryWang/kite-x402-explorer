@@ -7,7 +7,7 @@ interface CodeSnippetGeneratorProps {
   endpoint: ServiceEndpoint;
 }
 
-type LangTab = 'curl' | 'ts' | 'python' | 'agent';
+type LangTab = 'curl' | 'ts' | 'python' | 'go' | 'rust' | 'agent';
 
 export const CodeSnippetGenerator: React.FC<CodeSnippetGeneratorProps> = ({
   service,
@@ -169,6 +169,118 @@ if res.status_code == 402:
     print("Settled! Status:", paid_res.status_code, paid_res.json())`;
   };
 
+  const getGoCode = () => {
+    return `package main
+
+import (
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+)
+
+// Kite Chain (${chainId}) x402 Micropayment Client in Go
+func main() {
+	targetURL := "${fullUrl}${queryParams}"
+	client := &http.Client{}
+
+	// 1. Probe endpoint to trigger HTTP 402 challenge
+	req, _ := http.NewRequest("${endpoint.method}", targetURL, nil)
+	req.Header.Set("Accept", "application/json")
+	resp, err := client.Do(req)
+	if err != nil {
+		panic(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusPaymentRequired {
+		rawChallenge := resp.Header.Get("PAYMENT-REQUIRED")
+		decoded, _ := base64.StdEncoding.DecodeString(rawChallenge)
+		fmt.Printf("Received 402 Challenge: %s\\n", string(decoded))
+
+		// 2. Sign EIP-3009 TransferWithAuthorization using go-ethereum / crypto
+		// and encode into PAYMENT-SIGNATURE base64 header
+		paymentSigPayload := map[string]interface{}{
+			"x402Version": 2,
+			"scheme":      "exact",
+			"network":     "${service.network}",
+			"signer":      os.Getenv("AGENT_ADDRESS"),
+		}
+		sigBytes, _ := json.Marshal(paymentSigPayload)
+		authHeader := base64.StdEncoding.EncodeToString(sigBytes)
+
+		// 3. Re-dispatch request with PAYMENT-SIGNATURE
+		paidReq, _ := http.NewRequest("${endpoint.method}", targetURL, nil)
+		paidReq.Header.Set("Accept", "application/json")
+		paidReq.Header.Set("PAYMENT-SIGNATURE", authHeader)
+
+		paidResp, err := client.Do(paidReq)
+		if err != nil {
+			panic(err)
+		}
+		defer paidResp.Body.Close()
+
+		body, _ := io.ReadAll(paidResp.Body)
+		fmt.Printf("Settled! Status: %d, Response: %s\\n", paidResp.StatusCode, string(body))
+	}
+}`;
+  };
+
+  const getRustCode = () => {
+    return `// Kite Chain (${chainId}) x402 Micropayment Client in Rust (reqwest + alloy)
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
+use reqwest::header::{HeaderMap, HeaderValue, ACCEPT};
+use serde_json::json;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let client = reqwest::Client::new();
+    let target = "${fullUrl}${queryParams}";
+
+    // 1. Probe endpoint to discover 402 Payment Required
+    let mut headers = HeaderMap::new();
+    headers.insert(ACCEPT, HeaderValue::from_static("application/json"));
+
+    let res = client
+        .${endpoint.method.toLowerCase()}(target)
+        .headers(headers.clone())
+        .send()
+        .await?;
+
+    if res.status() == reqwest::StatusCode::PAYMENT_REQUIRED {
+        if let Some(challenge_header) = res.headers().get("PAYMENT-REQUIRED") {
+            let decoded = BASE64.decode(challenge_header.as_bytes())?;
+            println!("Challenge parsed: {}", String::from_utf8_lossy(&decoded));
+        }
+
+        // 2. Sign EIP-3009 with Alloy / Ethers wallet and encode PAYMENT-SIGNATURE
+        let auth_payload = json!({
+            "x402Version": 2,
+            "scheme": "exact",
+            "network": "${service.network}",
+        });
+        let sig_b64 = BASE64.encode(auth_payload.to_string());
+
+        headers.insert("PAYMENT-SIGNATURE", HeaderValue::from_str(&sig_b64)?);
+
+        // 3. Dispatch paid request to Facilitator & upstream
+        let paid_res = client
+            .${endpoint.method.toLowerCase()}(target)
+            .headers(headers)
+            .send()
+            .await?;
+
+        println!("Settled with status: {}", paid_res.status());
+        let body = paid_res.text().await?;
+        println!("Response: {}", body);
+    }
+
+    Ok(())
+}`;
+  };
+
   const getAgentToolCode = () => {
     return `// LangChain / OpenAI Agent Tool definition for Kite x402 API
 export const kite${service.name.replace(/[^a-zA-Z0-9]/g, '')}Tool = {
@@ -195,6 +307,10 @@ export const kite${service.name.replace(/[^a-zA-Z0-9]/g, '')}Tool = {
         return getTsCode();
       case 'python':
         return getPythonCode();
+      case 'go':
+        return getGoCode();
+      case 'rust':
+        return getRustCode();
       case 'agent':
         return getAgentToolCode();
     }
@@ -258,6 +374,42 @@ export const kite${service.name.replace(/[^a-zA-Z0-9]/g, '')}Tool = {
             }}
           >
             <FileCode size={12} /> Python
+          </button>
+          <button
+            onClick={() => setActiveTab('go')}
+            style={{
+              padding: '3px 10px',
+              fontSize: '0.75rem',
+              borderRadius: '4px',
+              border: 'none',
+              cursor: 'pointer',
+              background: activeTab === 'go' ? 'var(--bg-tertiary)' : 'transparent',
+              color: activeTab === 'go' ? 'var(--accent-cyan)' : 'var(--text-muted)',
+              fontWeight: activeTab === 'go' ? 600 : 400,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+            }}
+          >
+            <FileCode size={12} /> Go
+          </button>
+          <button
+            onClick={() => setActiveTab('rust')}
+            style={{
+              padding: '3px 10px',
+              fontSize: '0.75rem',
+              borderRadius: '4px',
+              border: 'none',
+              cursor: 'pointer',
+              background: activeTab === 'rust' ? 'var(--bg-tertiary)' : 'transparent',
+              color: activeTab === 'rust' ? 'var(--accent-cyan)' : 'var(--text-muted)',
+              fontWeight: activeTab === 'rust' ? 600 : 400,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+            }}
+          >
+            <FileCode size={12} /> Rust
           </button>
           <button
             onClick={() => setActiveTab('agent')}

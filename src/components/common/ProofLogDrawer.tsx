@@ -5,16 +5,19 @@ import {
   deleteProof,
   clearAllProofs,
   subscribeToProofs,
+  importProofs,
 } from '../../services/proof-logger.js';
 import {
   downloadReceiptAsJson,
   downloadBatchReceiptsAsJson,
   copyReceiptJson,
+  parseAndValidateReceipt,
 } from '../../lib/receipt-exporter.js';
 import {
   X,
   ShieldCheck,
   Download,
+  Upload,
   Copy,
   Trash2,
   ExternalLink,
@@ -38,6 +41,65 @@ export const ProofLogDrawer: React.FC<ProofLogDrawerProps> = ({ isOpen, onClose 
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<ProofStatus | 'all'>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [importStatus, setImportStatus] = useState<string | null>(null);
+
+  const fileInputRef = React.useRef<HTMLInputElement | null>(null);
+
+  const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const text = event.target?.result as string;
+        const parsed = JSON.parse(text);
+        const toImport: PaymentProofRecord[] = [];
+
+        if (Array.isArray(parsed.receipts)) {
+          // Consolidated batch report
+          for (const item of parsed.receipts) {
+            const res = parseAndValidateReceipt(item);
+            if (res.valid && res.proofRecord) {
+              toImport.push(res.proofRecord);
+            }
+          }
+        } else if (Array.isArray(parsed)) {
+          // Array of receipts
+          for (const item of parsed) {
+            const res = parseAndValidateReceipt(item);
+            if (res.valid && res.proofRecord) {
+              toImport.push(res.proofRecord);
+            }
+          }
+        } else {
+          // Single receipt
+          const res = parseAndValidateReceipt(parsed);
+          if (res.valid && res.proofRecord) {
+            toImport.push(res.proofRecord);
+          } else {
+            alert(`Import failed: ${res.errors.join(', ')}`);
+            return;
+          }
+        }
+
+        if (toImport.length > 0) {
+          const result = importProofs(toImport);
+          setImportStatus(`Imported ${result.added} new proof record(s)!`);
+          setTimeout(() => setImportStatus(null), 3000);
+        } else {
+          alert('No valid x402 payment proof records found in file.');
+        }
+      } catch (err) {
+        alert('Invalid JSON file format: ' + String(err));
+      } finally {
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
+      }
+    };
+    reader.readAsText(file);
+  };
 
   useEffect(() => {
     setProofs(getStoredProofs());
@@ -145,6 +207,21 @@ export const ProofLogDrawer: React.FC<ProofLogDrawerProps> = ({ isOpen, onClose 
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleImportFile}
+              accept=".json"
+              style={{ display: 'none' }}
+            />
+            <button
+              className="btn btn-secondary"
+              onClick={() => fileInputRef.current?.click()}
+              style={{ fontSize: '0.78rem', padding: '0.4rem 0.75rem' }}
+              title="Import x402-receipt-v1.json proof file"
+            >
+              <Upload size={13} /> Import
+            </button>
             {proofs.length > 0 && (
               <>
                 <button
@@ -210,6 +287,25 @@ export const ProofLogDrawer: React.FC<ProofLogDrawerProps> = ({ isOpen, onClose 
             background: 'rgba(0, 0, 0, 0.2)',
           }}
         >
+          {importStatus && (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                background: 'rgba(16, 185, 129, 0.15)',
+                border: '1px solid rgba(16, 185, 129, 0.4)',
+                borderRadius: 'var(--radius-sm)',
+                padding: '0.45rem 0.75rem',
+                fontSize: '0.78rem',
+                color: 'var(--accent-emerald)',
+                fontWeight: 600,
+              }}
+            >
+              <Check size={14} />
+              <span>{importStatus}</span>
+            </div>
+          )}
           {/* Search bar */}
           <div
             style={{

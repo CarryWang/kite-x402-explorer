@@ -193,4 +193,77 @@ export const INITIAL_SERVICES: ServiceManifest[] = [
       },
     ],
   },
+  {
+    schema: 1,
+    name: 'kite-agent-zk-attestation',
+    display_name: 'Agent Zero-Knowledge Attestation & State Proof Relayer',
+    description: 'Cryptographic proof verification of off-chain AI reasoning batches, monotonic epoch sequencing, and on-chain state anchoring.',
+    maintainer: {
+      github: 'Anyi-zheng',
+      contact: 'dev@gokite.ai',
+    },
+    status: 'testnet',
+    base_url: 'https://zk-attestation.sandbox.gokite.ai',
+    network: 'eip155:2368',
+    pay_to: '0x6666666666666666666666666666666666666666',
+    upstream: {
+      name: 'Snark Recursion Optimizer',
+      url: 'https://api.zk-agent.internal',
+      requires_api_key: false,
+    },
+    categories: ['ai', 'data'],
+    tags: ['zk-snark', 'groth16', 'attestation', 'agent-state', 'kite-chain'],
+    source: 'typescript-express',
+    endpoints: [
+      {
+        method: 'POST',
+        path: '/v1/attest/verify',
+        summary: 'Submit off-chain batch attestation proof and verify cryptographic Merkle state tree on Kite Testnet.',
+        price_usd: '0.002',
+        example_request: {
+          body: {
+            epoch: 128,
+            proof_type: 'groth16_bn254',
+            public_inputs: ['0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef'],
+          },
+        },
+      },
+    ],
+  },
+  {
+    schema: 1,
+    name: 'kite-agent-telemetry-indexer',
+    display_name: 'Kite Agent Telemetry & Micropayment Indexer',
+    description: 'High-throughput real-time sliding-window telemetry aggregation, latency profiling, and gas consumption analytics for Kite AI services.',
+    maintainer: {
+      github: 'untruebattl',
+      contact: 'indexer@gokite.ai',
+    },
+    status: 'testnet',
+    base_url: 'https://telemetry.sandbox.gokite.ai',
+    network: 'eip155:2368',
+    pay_to: '0x7777777777777777777777777777777777777777',
+    upstream: {
+      name: 'Telemetry Ingestion Pipeline',
+      url: 'https://api.telemetry-pipeline.internal',
+      requires_api_key: false,
+    },
+    categories: ['data', 'other'],
+    tags: ['telemetry', 'analytics', 'indexer', 'gas-profiling'],
+    source: 'typescript-express',
+    endpoints: [
+      {
+        method: 'GET',
+        path: '/v1/telemetry/metrics',
+        summary: 'Query sliding-window agent RPC latency, success rate percentiles, and gas usage trends.',
+        price_usd: '0.001',
+        example_request: {
+          query: {
+            window_minutes: '60',
+            network: 'eip155:2368',
+          },
+        },
+      },
+    ],
+  },
 ];
