@@ -7,7 +7,7 @@ interface CodeSnippetGeneratorProps {
   endpoint: ServiceEndpoint;
 }
 
-type LangTab = 'curl' | 'ts' | 'python' | 'agent';
+type LangTab = 'curl' | 'ts' | 'python' | 'agent' | 'channel';
 
 export const CodeSnippetGenerator: React.FC<CodeSnippetGeneratorProps> = ({
   service,
@@ -187,6 +187,26 @@ export const kite${service.name.replace(/[^a-zA-Z0-9]/g, '')}Tool = {
 };`;
   };
 
+  const getStreamChannelCode = () => {
+    return `// Kite Stream Channel Micropayment Ticket (EIP-155: ${chainId})
+import { openStreamChannel, allocateStreamTicket } from './stream-channel-router';
+
+// 1. Open off-chain micro-channel with recipient
+const channel = openStreamChannel(
+  "chan_${service.name.replace(/-/g, '_')}_01",
+  "0xYourPayerAddressHere",
+  "${service.pay_to}",
+  1000000000000000000n // 1.0 capacity
+);
+
+// 2. Allocate micro-ticket per streaming chunk
+const chunkCost = 1000000000000000n; // 0.001 token
+const { channel: updatedChan, ticket } = allocateStreamTicket(channel, chunkCost);
+
+console.log(\`Issued ticket nonce \${ticket.sequenceNonce}, cumulative: \${ticket.cumulativeWei} wei\`);
+// Transmit ticket in PAYMENT-SIGNATURE header for stream verification at ${endpoint.path}`;
+  };
+
   const getActiveCode = () => {
     switch (activeTab) {
       case 'curl':
@@ -197,6 +217,8 @@ export const kite${service.name.replace(/[^a-zA-Z0-9]/g, '')}Tool = {
         return getPythonCode();
       case 'agent':
         return getAgentToolCode();
+      case 'channel':
+        return getStreamChannelCode();
     }
   };
 
@@ -276,6 +298,24 @@ export const kite${service.name.replace(/[^a-zA-Z0-9]/g, '')}Tool = {
             }}
           >
             <Bot size={12} /> Agent Tool
+          </button>
+          <button
+            onClick={() => setActiveTab('channel')}
+            style={{
+              padding: '3px 10px',
+              fontSize: '0.75rem',
+              borderRadius: '4px',
+              border: 'none',
+              cursor: 'pointer',
+              background: activeTab === 'channel' ? 'rgba(59, 130, 246, 0.2)' : 'transparent',
+              color: activeTab === 'channel' ? '#60a5fa' : 'var(--text-muted)',
+              fontWeight: activeTab === 'channel' ? 600 : 400,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+            }}
+          >
+            <Bot size={12} /> State Channel
           </button>
         </div>
 
