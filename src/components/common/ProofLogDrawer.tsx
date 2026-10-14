@@ -138,8 +138,9 @@ export const ProofLogDrawer: React.FC<ProofLogDrawerProps> = ({ isOpen, onClose 
   const getStatusBadge = (status: ProofStatus) => {
     switch (status) {
       case 'settled':
-      case 'simulated':
         return <span className="badge badge-emerald">Settled On-Chain</span>;
+      case 'simulated':
+        return <span className="badge badge-cyan">Simulated</span>;
       case 'aborted_502':
         return <span className="badge badge-amber">502 Guarded (No Deduction)</span>;
       case 'expired_sig':
@@ -353,7 +354,7 @@ export const ProofLogDrawer: React.FC<ProofLogDrawerProps> = ({ isOpen, onClose 
                 </span>
               </div>
               <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>
-                Settled: {auditReport.stats.settledCount} | Payers: {auditReport.stats.uniquePayers}
+                Settled: {auditReport.stats.settledCount} | Simulated: {auditReport.stats.simulatedCount} | Payers: {auditReport.stats.uniquePayers}
               </div>
             </div>
           )}
@@ -402,7 +403,7 @@ export const ProofLogDrawer: React.FC<ProofLogDrawerProps> = ({ isOpen, onClose 
           {/* Status filter pills */}
           <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center' }}>
             <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600 }}>STATUS:</span>
-            {(['all', 'settled', 'aborted_502', 'expired_sig'] as const).map((st) => (
+            {(['all', 'settled', 'simulated', 'aborted_502', 'expired_sig'] as const).map((st) => (
               <button
                 key={st}
                 onClick={() => setFilterStatus(st)}
@@ -421,6 +422,8 @@ export const ProofLogDrawer: React.FC<ProofLogDrawerProps> = ({ isOpen, onClose 
                   ? 'All'
                   : st === 'settled'
                   ? 'Settled'
+                  : st === 'simulated'
+                  ? 'Simulated'
                   : st === 'aborted_502'
                   ? '502 Guarded'
                   : 'Expired'}

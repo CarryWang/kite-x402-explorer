@@ -15,6 +15,7 @@ export interface AuditAnomalyResult {
 export interface ReceiptAuditorStats {
   totalAnalyzed: number;
   settledCount: number;
+  simulatedCount: number;
   failureCount: number;
   uniquePayers: number;
   uniqueEndpoints: number;
@@ -85,14 +86,17 @@ export class ReceiptAnomalyAuditor {
     const payers = new Set<string>();
     const endpoints = new Set<string>();
     let settled = 0;
+    let simulated = 0;
     let failed = 0;
 
     for (const p of proofs) {
       payers.add(p.payerAddress.toLowerCase());
       endpoints.add(`${p.httpMethod} ${p.endpointPath}`);
 
-      if (p.status === 'settled' || p.status === 'simulated') {
+      if (p.status === 'settled') {
         settled++;
+      } else if (p.status === 'simulated') {
+        simulated++;
       } else {
         failed++;
       }
@@ -107,6 +111,7 @@ export class ReceiptAnomalyAuditor {
       stats: {
         totalAnalyzed: proofs.length,
         settledCount: settled,
+        simulatedCount: simulated,
         failureCount: failed,
         uniquePayers: payers.size,
         uniqueEndpoints: endpoints.size,

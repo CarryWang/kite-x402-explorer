@@ -2,6 +2,8 @@
 
 This document outlines the system architecture, protocol message lifecycle, and cryptographic verification flow underpinning the Kite x402 Explorer.
 
+Sections 4–10 describe prototype logic and intended protocol flows. The TypeScript helpers calculate local state only; they do not hold funds, verify ZK proofs, or submit on-chain transactions. The local `/api/mock-x402` route returns simulated settlement data.
+
 ---
 
 ## 1. Protocol Sequence Flow
@@ -195,18 +197,8 @@ To power decentralized AI model training, dataset curation networks rely on dist
 
 ---
 
-## 10. Zero-Knowledge Agent Reputation & Credit-Based x402 Micropayments
+## 10. Reputation Credit Prototype
 
-Standard x402 requires synchronous upfront EIP-3009 payment authorization before service delivery. For trusted, high-volume autonomous agents, `kite-agent-zk-reputation` introduces a zero-knowledge reputation attestation and credit line mechanism.
+`evaluateAgentCreditLine` computes a tier from a supplied reputation score only after a caller-provided trusted verifier accepts the complete attestation. Without that verifier, it returns an unverified profile with zero credit. This repository does not include a ZK circuit, verifying key, trusted issuer, nullifier store, or on-chain credit contract.
 
-### Credit-Line Architecture
-1. **Zero-Knowledge Attestation Verification (`evaluateAgentCreditLine`)**:
-   - Autonomous agents present cryptographic ZK proofs attesting to historical payment volume, slash-free task completions, and identity authenticity without leaking underlying transaction history.
-   - Agents are mapped into credit tiers (Bronze: 0.05 token, Silver: 0.2 token, Gold: 1.0 token, Platinum: 5.0 tokens).
-
-2. **Uncollateralized Post-Payment Invoicing (`consumeCredit`)**:
-   - Eligible agents invoke x402 endpoints with a valid reputation credit attestation header.
-   - Upstream services fulfill requests immediately, drawing down the agent's active credit line without blocking for on-chain block confirmations.
-
-3. **Batched Debt Settlement (`settleCreditDebt`)**:
-   - Accumulated micropayment debts are settled periodically in consolidated batches on Kite Chain, minimizing transaction fees while preserving cryptographically enforced repayment incentives.
+`consumeCredit` and `settleCreditDebt` update local profile values for simulation. They neither authorize real purchases nor transfer or settle tokens. A production deployment requires a trusted proof verifier, replay protection, durable ledger, and on-chain enforcement before enabling credit payments.

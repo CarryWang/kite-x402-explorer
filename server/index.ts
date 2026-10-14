@@ -3,6 +3,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import { INITIAL_SERVICES } from '../src/services/sample-services.js';
 import { parseAndValidateManifest } from '../src/services/manifest-loader.js';
+import { buildMockSettlement } from './mock-settlement.js';
 
 dotenv.config();
 
@@ -120,22 +121,12 @@ app.all(['/api/mock-x402/:serviceName', '/api/mock-x402/:serviceName/*'], (req: 
     res.setHeader('payment-required', base64Challenge);
     res.status(402).json({
       error: 'Payment Required',
-      message: `Authorization required for ${srv.display_name}. Settle on Kite chain.`,
+      message: `Simulated authorization required for ${srv.display_name}. No on-chain settlement occurs.`,
     });
     return;
   }
 
-  // Payment signature is present! Simulate Facilitator verification and settlement
-  const mockTxHash = '0x' + Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
-  const paymentResponse = {
-    txHash: mockTxHash,
-    settled: true,
-    blockNumber: Math.floor(Date.now() / 2000),
-  };
-  const base64Response = Buffer.from(JSON.stringify(paymentResponse)).toString('base64');
-
-  res.setHeader('PAYMENT-RESPONSE', base64Response);
-  res.setHeader('payment-response', base64Response);
+  // Local simulator: accept the demo signature without claiming a chain settlement.
   res.status(200).json({
     success: true,
     data: {
@@ -145,11 +136,7 @@ app.all(['/api/mock-x402/:serviceName', '/api/mock-x402/:serviceName/*'], (req: 
       timestamp: new Date().toISOString(),
       upstream: srv.upstream.name,
     },
-    settlement: {
-      facilitator: 'https://facilitator.pieverse.io/v2',
-      txHash: mockTxHash,
-      settledOnChain: true,
-    },
+    settlement: buildMockSettlement(),
   });
 });
 

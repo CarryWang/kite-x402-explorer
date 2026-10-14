@@ -8,6 +8,8 @@
 
 **Kite x402 Service Explorer & Playground** is an open-source developer hub and interactive execution sandbox tailored for the [Kite](https://gokite.ai) agentic economy. It bridges static `service.yaml` manifests from [`kite-x402-services`](https://github.com/gokite-ai/kite-x402-services) into live, verifiable Web3 execution, telemetry, and automated auditing.
 
+The bundled service directory and `/api/mock-x402` route are demonstration data. Their addresses and availability labels are not verified payment destinations. The mock route does not contact a facilitator or settle a transaction; generated proof records are marked `simulated`. The added escrow, channel, dispute, revenue-share, and reputation modules are local prototypes rather than deployed contracts or services. Credit eligibility stays disabled until a trusted attestation verifier is supplied.
+
 ### Key Capabilities
 
 1. **Service Directory & Inspection**:
@@ -41,6 +43,8 @@
 ---
 
 ## 🚀 Quick Start
+
+Run `npm test` for payment safety regression tests and `npm run build` before deploying changes.
 
 ### Prerequisites
 - Node.js >= 20

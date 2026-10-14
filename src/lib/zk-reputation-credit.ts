@@ -1,9 +1,8 @@
 /**
  * Zero-Knowledge AI Agent Reputation Attestation & Credit-Based x402 Micropayments.
  *
- * Grants trusted autonomous agents uncollateralized credit lines based on cryptographic
- * ZK reputation proofs (payment history, slash-free record, validator signatures),
- * enabling post-payment batch settlement without upfront payment delays.
+ * Calculates a credit profile only after a caller-supplied trusted verifier
+ * validates the attestation. This module does not implement ZK verification.
  */
 
 export type ReputationTier = 'unverified' | 'bronze' | 'silver' | 'gold' | 'platinum';
@@ -27,15 +26,25 @@ export interface CreditLineProfile {
   expiresAtTimestamp: number;
 }
 
+export interface CreditEvaluationOptions {
+  /** Must validate the complete proof against a trusted issuer and reject replayed nullifiers. */
+  verifyAttestation?: (proof: ZKReputationProof) => boolean;
+  currentTimestamp?: number;
+}
+
 /**
  * Evaluates an agent's ZK reputation proof and computes their dynamic credit line.
  */
 export function evaluateAgentCreditLine(
   proof: ZKReputationProof,
-  currentTimestamp: number = Math.floor(Date.now() / 1000)
+  options: CreditEvaluationOptions = {}
 ): CreditLineProfile {
-  // Validate proof validity window
-  if (currentTimestamp < proof.issuedAtTimestamp || currentTimestamp > proof.expiresAtTimestamp) {
+  const currentTimestamp = options.currentTimestamp ?? Math.floor(Date.now() / 1000);
+  const validScore = Number.isInteger(proof.reputationScore) && proof.reputationScore >= 0 && proof.reputationScore <= 1000;
+  const validWindow = Number.isSafeInteger(proof.issuedAtTimestamp) && Number.isSafeInteger(proof.expiresAtTimestamp)
+    && proof.issuedAtTimestamp <= proof.expiresAtTimestamp
+    && currentTimestamp >= proof.issuedAtTimestamp && currentTimestamp <= proof.expiresAtTimestamp;
+  if (!validScore || !validWindow || !options.verifyAttestation?.(proof)) {
     return {
       agentAddress: proof.agentAddress,
       tier: 'unverified',

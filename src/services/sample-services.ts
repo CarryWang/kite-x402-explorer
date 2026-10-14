@@ -664,13 +664,13 @@ export const INITIAL_SERVICES: ServiceManifest[] = [
   {
     schema: 1,
     name: 'kite-agent-zk-reputation',
-    display_name: 'Zero-Knowledge Agent Reputation & Credit Protocol',
-    description: 'Cryptographic ZK reputation verification and dynamic uncollateralized credit-line micropayment settlement for AI agents on Kite Chain.',
+    display_name: 'Agent Reputation Credit Prototype',
+    description: 'Demonstration credit profile calculator. Requires an external trusted attestation verifier; no ZK proof verification or live settlement is implemented here.',
     maintainer: {
       github: 'dishonesthero',
       contact: 'zk-reputation@gokite.ai',
     },
-    status: 'live',
+    status: 'draft',
     base_url: 'https://reputation.gokite.ai',
     network: 'eip155:2366',
     pay_to: '0xcccccccccccccccccccccccccccccccccccccccc',
@@ -686,7 +686,7 @@ export const INITIAL_SERVICES: ServiceManifest[] = [
       {
         method: 'POST',
         path: '/v1/reputation/verify-proof',
-        summary: 'Verify an autonomous agent ZK reputation proof and compute allowed credit limit.',
+        summary: 'Prototype credit tier calculation after a trusted external verifier accepts an agent attestation.',
         price_usd: '0.005',
         example_request: {
           body: {
@@ -699,7 +699,7 @@ export const INITIAL_SERVICES: ServiceManifest[] = [
       {
         method: 'POST',
         path: '/v1/reputation/credit-settle',
-        summary: 'Batch settle consumed credit-line debt and reset available credit line balance.',
+        summary: 'Simulate debt repayment in a local credit profile; no on-chain transfer occurs.',
         price_usd: '0.002',
         example_request: {
           body: {

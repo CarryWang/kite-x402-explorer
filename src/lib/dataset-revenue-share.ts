@@ -37,6 +37,9 @@ export function calculateWeightedRevenueShare(
   totalPoolWei: bigint,
   contributors: DataContributor[]
 ): DatasetBatchSummary {
+  if (contributors.some((c) => !Number.isSafeInteger(c.acceptedTokensCount) || c.acceptedTokensCount < 0 || !Number.isInteger(c.qualityScoreBps) || c.qualityScoreBps < 0 || c.qualityScoreBps > 10000)) {
+    throw new Error('Contributor token count or quality score is invalid');
+  }
   if (contributors.length === 0 || totalPoolWei <= 0n) {
     return {
       totalTokens: 0,

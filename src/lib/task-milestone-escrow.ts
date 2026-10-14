@@ -93,6 +93,9 @@ export function releaseMilestonePayout(
   if (vault.status !== 'funded' && vault.status !== 'in_progress') {
     throw new Error(`Cannot release milestone on vault with status: ${vault.status}`);
   }
+  if (Math.floor(Date.now() / 1000) > vault.expiryTimestamp) {
+    throw new Error(`Cannot release milestone on expired vault ${vault.taskId}`);
+  }
 
   const milestoneIndex = vault.milestones.findIndex((m) => m.milestoneId === milestoneId);
   if (milestoneIndex === -1) {
@@ -107,8 +110,7 @@ export function releaseMilestonePayout(
   // Validate deliverable hash if strictly configured
   if (
     milestone.requiredDeliverableHash &&
-    providedDeliverableHash &&
-    milestone.requiredDeliverableHash !== providedDeliverableHash
+    milestone.requiredDeliverableHash.toLowerCase() !== providedDeliverableHash?.toLowerCase()
   ) {
     throw new Error(`Deliverable hash mismatch for milestone ${milestoneId}`);
   }

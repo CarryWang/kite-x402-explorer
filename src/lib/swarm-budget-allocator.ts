@@ -29,6 +29,15 @@ export function calculateSwarmBountySplit(
   allocations: AgentBudgetAllocation[],
   assetDecimals: number = 18
 ): SwarmSplitResult {
+  if (totalBountyUnits <= 0n) {
+    return {
+      totalAmountUnits: totalBountyUnits,
+      totalDustRefundUnits: 0n,
+      shares: [],
+      isValid: false,
+      error: 'Bounty amount must be positive',
+    };
+  }
   if (allocations.length === 0) {
     return {
       totalAmountUnits: totalBountyUnits,

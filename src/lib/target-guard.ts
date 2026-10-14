@@ -6,6 +6,7 @@ export interface SecurityPolicyViolation {
   code:
     | 'UNTRUSTED_RECIPIENT'
     | 'AMOUNT_EXCEEDS_CAP'
+    | 'INVALID_AMOUNT'
     | 'UNSUPPORTED_NETWORK'
     | 'INVALID_ASSET_CONTRACT'
     | 'MALFORMED_RECIPIENT_ADDRESS'
@@ -68,6 +69,14 @@ export function auditX402ChallengeTarget(
       });
       riskScore += 80;
     }
+    if (policy.allowedRecipients && !policy.allowedRecipients.some((a) => a.toLowerCase() === payToNormalized)) {
+      violations.push({
+        code: 'UNTRUSTED_RECIPIENT',
+        severity: 'CRITICAL',
+        message: `Recipient address is not in the allowed list: ${accept.payTo}`,
+      });
+      riskScore += 80;
+    }
   }
 
   // 2. Network verification
@@ -96,6 +105,14 @@ export function auditX402ChallengeTarget(
   // 4. Amount Cap Inspection
   try {
     const requestedUnits = BigInt(accept.amount);
+    if (requestedUnits <= 0n) {
+      violations.push({
+        code: 'INVALID_AMOUNT',
+        severity: 'CRITICAL',
+        message: `Payment amount must be positive: ${accept.amount}`,
+      });
+      riskScore += 60;
+    }
     if (requestedUnits > policy.maxAmountCapUnits) {
       violations.push({
         code: 'AMOUNT_EXCEEDS_CAP',
@@ -106,7 +123,7 @@ export function auditX402ChallengeTarget(
     }
   } catch {
     violations.push({
-      code: 'AMOUNT_EXCEEDS_CAP',
+      code: 'INVALID_AMOUNT',
       severity: 'CRITICAL',
       message: `Invalid amount format specified in challenge: ${accept.amount}`,
     });
@@ -134,4 +151,28 @@ export function auditX402ChallengeTarget(
       ? `Audit Passed: Verified recipient and token contract on ${kiteConfig?.name || accept.network}`
       : `Audit Failed: ${violations.length} safety violation(s) detected. Signer should abort.`,
   };
+}
+
+/** Reject unsafe or locally fabricated challenges before any wallet signs them. */
+export function assertSafeSigningTarget(
+  accept: X402AcceptOption,
+  expectedRecipient: string,
+  expectedNetwork: string,
+  signerType: 'injected' | 'sandbox',
+  challengeSource: 'server' | 'fallback'
+): SecurityAuditVerdict {
+  if (challengeSource === 'fallback' && signerType === 'injected') {
+    throw new Error('Browser wallet cannot sign an offline fallback challenge');
+  }
+  if (accept.network !== expectedNetwork) {
+    throw new Error(`Challenge network ${accept.network} does not match selected service ${expectedNetwork}`);
+  }
+  const verdict = auditX402ChallengeTarget(accept, {
+    ...DEFAULT_GUARD_POLICY,
+    allowedRecipients: [expectedRecipient],
+  });
+  if (!verdict.isSafe) {
+    throw new Error(verdict.violations.map((v) => v.message).join('; '));
+  }
+  return verdict;
 }

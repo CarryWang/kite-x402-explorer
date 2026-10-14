@@ -45,6 +45,12 @@ export function openStreamChannel(
   capacityWei: bigint,
   thresholdWei: bigint = capacityWei / 2n
 ): StreamChannelState {
+  if (capacityWei <= 0n) {
+    throw new Error('Channel capacity must be positive');
+  }
+  if (thresholdWei <= 0n || thresholdWei > capacityWei) {
+    throw new Error('Settlement threshold must be positive and within channel capacity');
+  }
   return {
     channelId,
     payer,
@@ -65,6 +71,9 @@ export function allocateStreamTicket(
   channel: StreamChannelState,
   chunkCostWei: bigint
 ): { channel: StreamChannelState; ticket: MicroTicket } {
+  if (chunkCostWei <= 0n) {
+    throw new Error('Ticket cost must be positive');
+  }
   if (!channel.isOpen) {
     throw new Error(`Cannot allocate ticket on closed stream channel ${channel.channelId}`);
   }

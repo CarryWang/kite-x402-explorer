@@ -7,7 +7,7 @@ import { ProtocolVisualizer } from './ProtocolVisualizer.js';
 import { createSignedEIP3009Payload } from '../../lib/eip3009.js';
 import { CheckCircle2, RefreshCw, AlertTriangle, ShieldCheck, History, ShieldAlert } from 'lucide-react';
 import { saveProof } from '../../services/proof-logger.js';
-import { auditX402ChallengeTarget, type SecurityAuditVerdict } from '../../lib/target-guard.js';
+import { auditX402ChallengeTarget, assertSafeSigningTarget, type SecurityAuditVerdict } from '../../lib/target-guard.js';
 import { ProtocolPerformanceTracker } from '../../lib/performance-tracker.js';
 
 interface PlaygroundViewProps {
@@ -56,6 +56,7 @@ export const PlaygroundView: React.FC<PlaygroundViewProps> = ({
   const [txHash, setTxHash] = useState<string>('');
   const [errorMode, setErrorMode] = useState<'none' | 'upstream-502' | 'expired-sig'>('none');
   const [auditVerdict, setAuditVerdict] = useState<SecurityAuditVerdict | null>(null);
+  const [challengeSource, setChallengeSource] = useState<'server' | 'fallback' | null>(null);
 
   const handleServiceChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const found = services.find((s) => s.name === e.target.value);
@@ -84,6 +85,7 @@ export const PlaygroundView: React.FC<PlaygroundViewProps> = ({
     setResponseBody('');
     setTxHash('');
     setAuditVerdict(null);
+    setChallengeSource(null);
   };
 
   // Step 1: Initial Request returning 402
@@ -99,6 +101,7 @@ export const PlaygroundView: React.FC<PlaygroundViewProps> = ({
 
       const header402 = res.headers.get('payment-required') || res.headers.get('PAYMENT-REQUIRED');
       if (header402) {
+        setChallengeSource('server');
         setRaw402Header(header402);
         const decoded = decodePaymentRequiredHeader(header402);
         setChallengePayload(decoded);
@@ -114,6 +117,7 @@ export const PlaygroundView: React.FC<PlaygroundViewProps> = ({
       }
     } catch {
       // Offline fallback: generate conforming 402 challenge
+      setChallengeSource('fallback');
       const isTestnet = currentService.network === 'eip155:2368';
       const fallbackChallenge: X402ChallengePayload = {
         x402Version: 2,
@@ -144,7 +148,7 @@ export const PlaygroundView: React.FC<PlaygroundViewProps> = ({
         JSON.stringify(
           {
             error: 'Payment Required',
-            message: `This endpoint requires an authorization of $${currentEndpoint.price_usd} settled on Kite chain.`,
+            message: `This offline demo requests a simulated authorization of $${currentEndpoint.price_usd}. No on-chain settlement occurs.`,
           },
           null,
           2
@@ -169,6 +173,11 @@ export const PlaygroundView: React.FC<PlaygroundViewProps> = ({
     const t0 = performance.now();
     try {
       const accept = challengePayload.accepts[0];
+      if (!challengeSource) throw new Error('Payment challenge source is unknown');
+      const verdict = assertSafeSigningTarget(
+        accept, currentService.pay_to, currentService.network, activeSigner.type, challengeSource
+      );
+      setAuditVerdict(verdict);
       const result = await createSignedEIP3009Payload({
         fromAddress: activeSigner.address,
         payToAddress: accept.payTo,
@@ -325,7 +334,8 @@ export const PlaygroundView: React.FC<PlaygroundViewProps> = ({
       setResponseStatus(res.status);
       setResponseBody(JSON.stringify(body, null, 2));
 
-      const settledTx = extractedTx || body.settlement?.txHash || '';
+      const isSettledOnChain = body.settlement?.settledOnChain === true;
+      const settledTx = isSettledOnChain ? (extractedTx || body.settlement?.txHash || '') : '';
       if (settledTx) {
         setTxHash(settledTx);
       }
@@ -346,7 +356,7 @@ export const PlaygroundView: React.FC<PlaygroundViewProps> = ({
         amountRaw: challengePayload?.accepts[0]?.amount || '1000000000000000',
         payerAddress: activeSigner?.address || auth?.from || '0x0000000000000000000000000000000000000000',
         payToAddress: currentService.pay_to,
-        status: 'settled',
+        status: isSettledOnChain && settledTx ? 'settled' : 'simulated',
         txHash: settledTx || undefined,
         signedAuthorizationPayload: simulatedSignature,
         eip3009Details: auth,
@@ -355,17 +365,16 @@ export const PlaygroundView: React.FC<PlaygroundViewProps> = ({
       });
     } catch {
       // Fallback response simulation
-      const fallbackTx = '0x' + Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
-      setTxHash(fallbackTx);
+      setTxHash('');
       setResponseStatus(200);
       const fallbackData = {
         success: true,
         service: currentService.name,
-        result: `Service executed successfully behind Kite x402 reverse proxy.`,
+        result: `Service execution simulated locally. No on-chain settlement occurred.`,
         settlement: {
           facilitator: 'https://facilitator.pieverse.io/v2',
-          txHash: fallbackTx,
-          settledOnChain: true,
+          settledOnChain: false,
+          simulated: true,
         },
       };
       setResponseBody(JSON.stringify(fallbackData, null, 2));
@@ -386,8 +395,7 @@ export const PlaygroundView: React.FC<PlaygroundViewProps> = ({
         amountRaw: challengePayload?.accepts[0]?.amount || '1000000000000000',
         payerAddress: activeSigner?.address || auth?.from || '0x0000000000000000000000000000000000000000',
         payToAddress: currentService.pay_to,
-        status: 'settled',
-        txHash: fallbackTx,
+        status: 'simulated',
         signedAuthorizationPayload: simulatedSignature,
         eip3009Details: auth,
         responseStatus: 200,
