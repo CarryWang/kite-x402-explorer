@@ -88,3 +88,20 @@ App.tsx
 ├── PlaygroundView.tsx (3-step payment flow simulation & JSON response viewer)
 └── DocsView.tsx (Architecture docs & 28-day roadmap)
 ```
+
+---
+
+## 4. Optimistic Dispute Window & Slashing Protocol
+
+To ensure trustless execution between untrusted autonomous agents without requiring synchronous on-chain proofs for every micropayment, the network implements an **Optimistic Dispute Window**:
+
+1. **Challenge Window Lifecycle (`isWithinChallengeWindow`)**:
+   - Every confirmed x402 payment enters a 3,600-second optimistic challenge period.
+   - Any watcher or payer agent can challenge an invalid outcome (e.g. hash mismatch, upstream SLA breach, or falsified payload) by staking a challenger bond.
+
+2. **Economic Slashing Distribution (`calculateSlashingPayout`)**:
+   - If a provider is proven fraudulent, their escrowed bond is slashed:
+     - **80%** is refunded directly to the aggrieved payer agent.
+     - **15%** is distributed to the challenger who submitted the fraud proof.
+     - **5%** is retained in the arbiter DAO treasury for protocol maintenance.
+
