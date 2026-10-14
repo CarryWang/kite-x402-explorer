@@ -88,3 +88,22 @@ App.tsx
 ├── PlaygroundView.tsx (3-step payment flow simulation & JSON response viewer)
 └── DocsView.tsx (Architecture docs & 28-day roadmap)
 ```
+
+---
+
+## 4. Milestone Task Escrow & Conditional Payment Release
+
+For complex, long-running agent assignments (e.g. distributed crawling, neural network fine-tuning, or multi-step code synthesis), full payment upfront poses risk to the client, while zero payment upfront poses risk to the agent worker.
+
+### Escrow Vault Protocol
+1. **Basis Points Conservation (`createMilestoneTask`)**:
+   - The client deposits the total task bounty into a locked escrow vault.
+   - Milestone allocations are defined in basis points ($\text{bps}$, $10000 = 100\%$). The final milestone absorbs integer division rounding dust, ensuring exact conservation of funds.
+
+2. **Deliverable Verification & Progressive Release (`releaseMilestonePayout`)**:
+   - As each stage is completed, the agent worker submits cryptographic proof of the deliverable (e.g. SHA-256 artifact digest or IPFS CID).
+   - Once verified, installment funds are released via EIP-3009 transfer to the worker agent without requiring full task completion.
+
+3. **Time-Lock Expiration & Client Protection (`checkTimeoutRefundEligibility`)**:
+   - If a worker agent stalls or becomes unresponsive before milestone deadlines, remaining locked funds are automatically eligible for full refund back to the client.
+
