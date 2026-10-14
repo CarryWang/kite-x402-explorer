@@ -5,8 +5,9 @@ import type { X402ChallengePayload } from '../../types/x402.js';
 import { WalletConnector, type WalletSigner } from './WalletConnector.js';
 import { ProtocolVisualizer } from './ProtocolVisualizer.js';
 import { createSignedEIP3009Payload } from '../../lib/eip3009.js';
-import { CheckCircle2, RefreshCw, AlertTriangle, ShieldCheck, History } from 'lucide-react';
+import { CheckCircle2, RefreshCw, AlertTriangle, ShieldCheck, History, ShieldAlert } from 'lucide-react';
 import { saveProof } from '../../services/proof-logger.js';
+import { auditX402ChallengeTarget, type SecurityAuditVerdict } from '../../lib/target-guard.js';
 
 interface PlaygroundViewProps {
   services: ServiceManifest[];
@@ -45,6 +46,7 @@ export const PlaygroundView: React.FC<PlaygroundViewProps> = ({
   const [responseBody, setResponseBody] = useState<string>('');
   const [txHash, setTxHash] = useState<string>('');
   const [errorMode, setErrorMode] = useState<'none' | 'upstream-502' | 'expired-sig'>('none');
+  const [auditVerdict, setAuditVerdict] = useState<SecurityAuditVerdict | null>(null);
 
   const handleServiceChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const found = services.find((s) => s.name === e.target.value);
@@ -72,6 +74,7 @@ export const PlaygroundView: React.FC<PlaygroundViewProps> = ({
     setResponseStatus(null);
     setResponseBody('');
     setTxHash('');
+    setAuditVerdict(null);
   };
 
   // Step 1: Initial Request returning 402
@@ -89,6 +92,10 @@ export const PlaygroundView: React.FC<PlaygroundViewProps> = ({
         setRaw402Header(header402);
         const decoded = decodePaymentRequiredHeader(header402);
         setChallengePayload(decoded);
+        if (decoded?.accepts && decoded.accepts[0]) {
+          const verdict = auditX402ChallengeTarget(decoded.accepts[0]);
+          setAuditVerdict(verdict);
+        }
         setResponseStatus(res.status);
         const body = await res.json().catch(() => ({}));
         setResponseBody(JSON.stringify(body, null, 2));
@@ -120,6 +127,8 @@ export const PlaygroundView: React.FC<PlaygroundViewProps> = ({
       const base64Header = btoa(JSON.stringify(fallbackChallenge));
       setRaw402Header(base64Header);
       setChallengePayload(fallbackChallenge);
+      const verdict = auditX402ChallengeTarget(fallbackChallenge.accepts[0]);
+      setAuditVerdict(verdict);
       setResponseStatus(402);
       setResponseBody(
         JSON.stringify(
@@ -684,6 +693,64 @@ export const PlaygroundView: React.FC<PlaygroundViewProps> = ({
                 <code>{challengePayload.accepts[0].payTo.slice(0, 8)}...</code>
               </div>
             </div>
+
+            {/* Target Guard Security Audit Verdict */}
+            {auditVerdict && (
+              <div
+                style={{
+                  marginTop: '0.75rem',
+                  paddingTop: '0.75rem',
+                  borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  flexWrap: 'wrap',
+                  gap: '0.5rem',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  {auditVerdict.isSafe ? (
+                    <ShieldCheck size={16} color="var(--accent-emerald)" />
+                  ) : (
+                    <ShieldAlert size={16} color="var(--accent-rose)" />
+                  )}
+                  <span
+                    style={{
+                      fontSize: '0.76rem',
+                      color: auditVerdict.isSafe ? 'var(--accent-emerald)' : 'var(--accent-rose)',
+                      fontWeight: 600,
+                    }}
+                  >
+                    Target Guard: {auditVerdict.summary}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Risk Score:</span>
+                  <span
+                    style={{
+                      fontSize: '0.72rem',
+                      padding: '1px 6px',
+                      borderRadius: '4px',
+                      background:
+                        auditVerdict.riskScore === 0
+                          ? 'rgba(16, 185, 129, 0.2)'
+                          : auditVerdict.riskScore < 50
+                          ? 'rgba(245, 158, 11, 0.2)'
+                          : 'rgba(244, 63, 94, 0.2)',
+                      color:
+                        auditVerdict.riskScore === 0
+                          ? 'var(--accent-emerald)'
+                          : auditVerdict.riskScore < 50
+                          ? 'var(--accent-amber)'
+                          : 'var(--accent-rose)',
+                      fontWeight: 700,
+                    }}
+                  >
+                    {auditVerdict.riskScore}/100
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
