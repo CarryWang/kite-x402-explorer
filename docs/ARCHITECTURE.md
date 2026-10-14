@@ -137,3 +137,21 @@ To ensure trustless execution between untrusted autonomous agents without requir
      - **80%** is refunded directly to the aggrieved payer agent.
      - **15%** is distributed to the challenger who submitted the fraud proof.
      - **5%** is retained in the arbiter DAO treasury for protocol maintenance.
+
+---
+
+## 7. High-Throughput Stream Routing & State Channel Micropayments
+
+When autonomous agents consume high-frequency, continuous data feeds (such as LLM token streaming or sensor telemetry), performing individual on-chain authorizations for each payload incurs prohibitive latency.
+
+### State Channel Architecture
+1. **Cumulative Micro-Tickets (`allocateStreamTicket`)**:
+   - The payer agent opens an off-chain micro-channel with designated capacity.
+   - For each streaming chunk, an incrementing nonce ticket with cumulative owed wei is signed and transmitted over HTTP headers (`PAYMENT-SIGNATURE`).
+
+2. **Batched Checkpoint Settlement (`shouldTriggerCheckpoint`)**:
+   - The recipient verifies tickets off-chain with sub-millisecond overhead.
+   - Checkpoint settlements are triggered only when cumulative volume crosses `settlementThresholdWei` or the stream terminates, consolidating hundreds of micropayments into a single on-chain EIP-3009 transaction.
+
+3. **Dynamic Mesh Routing (`/v1/router/route-stream`)**:
+   - Workload router continuously probes candidate gateways to dispatch queries along the lowest-latency, cost-optimal path.
