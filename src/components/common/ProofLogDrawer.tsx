@@ -16,6 +16,7 @@ import {
 import {
   X,
   ShieldCheck,
+  ShieldAlert,
   Download,
   Upload,
   Copy,
@@ -29,6 +30,7 @@ import {
   History,
 } from 'lucide-react';
 import { KITE_CHAINS } from '../../types/kite.js';
+import { ReceiptAnomalyAuditor } from '../../lib/receipt-auditor.js';
 
 interface ProofLogDrawerProps {
   isOpen: boolean;
@@ -106,6 +108,9 @@ export const ProofLogDrawer: React.FC<ProofLogDrawerProps> = ({ isOpen, onClose 
     const unsubscribe = subscribeToProofs((updated) => setProofs(updated));
     return unsubscribe;
   }, []);
+
+  const auditor = React.useMemo(() => new ReceiptAnomalyAuditor(), []);
+  const auditReport = React.useMemo(() => auditor.auditBatch(proofs), [proofs, auditor]);
 
   if (!isOpen) return null;
 
@@ -304,6 +309,52 @@ export const ProofLogDrawer: React.FC<ProofLogDrawerProps> = ({ isOpen, onClose 
             >
               <Check size={14} />
               <span>{importStatus}</span>
+            </div>
+          )}
+          {/* Anomaly Auditor Summary Bar */}
+          {proofs.length > 0 && (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                background:
+                  auditReport.anomalies.length > 0
+                    ? 'rgba(244, 63, 94, 0.1)'
+                    : 'rgba(16, 185, 129, 0.1)',
+                border:
+                  auditReport.anomalies.length > 0
+                    ? '1px solid rgba(244, 63, 94, 0.3)'
+                    : '1px solid rgba(16, 185, 129, 0.3)',
+                padding: '0.45rem 0.75rem',
+                borderRadius: 'var(--radius-sm)',
+                fontSize: '0.75rem',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                {auditReport.anomalies.length > 0 ? (
+                  <ShieldAlert size={14} color="var(--accent-rose)" />
+                ) : (
+                  <ShieldCheck size={14} color="var(--accent-emerald)" />
+                )}
+                <span
+                  style={{
+                    color:
+                      auditReport.anomalies.length > 0
+                        ? 'var(--accent-rose)'
+                        : 'var(--accent-emerald)',
+                    fontWeight: 600,
+                  }}
+                >
+                  Receipt Auditor:{' '}
+                  {auditReport.anomalies.length > 0
+                    ? `${auditReport.anomalies.length} anomaly detected (Replay/Invariant breach)`
+                    : 'No anomalies detected in stored receipts'}
+                </span>
+              </div>
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>
+                Settled: {auditReport.stats.settledCount} | Payers: {auditReport.stats.uniquePayers}
+              </div>
             </div>
           )}
           {/* Search bar */}

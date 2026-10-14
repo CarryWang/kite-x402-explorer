@@ -314,4 +314,40 @@ export const INITIAL_SERVICES: ServiceManifest[] = [
       },
     ],
   },
+  {
+    schema: 1,
+    name: 'kite-x402-receipt-auditor',
+    display_name: 'Kite x402 Receipt Integrity Auditor & Replay Detector',
+    description: 'High-assurance cryptographic verification, signature validity auditing, and state invariant validation for Kite agent micropayments.',
+    maintainer: {
+      github: 'probableacade',
+      contact: 'audit@kitedev.org',
+    },
+    status: 'testnet',
+    base_url: 'https://auditor.sandbox.gokite.ai',
+    network: 'eip155:2368',
+    pay_to: '0x9999999999999999999999999999999999999999',
+    upstream: {
+      name: 'Receipt Integrity Analyzer Engine',
+      url: 'https://api.receipt-auditor.internal',
+      requires_api_key: false,
+    },
+    categories: ['ai', 'data'],
+    tags: ['auditor', 'replay-detection', 'receipt-proof', 'kite-chain'],
+    source: 'typescript-express',
+    endpoints: [
+      {
+        method: 'POST',
+        path: '/v1/receipts/verify',
+        summary: 'Cryptographically verify an x402 receipt batch for replay collisions and zero-deduction invariants.',
+        price_usd: '0.001',
+        example_request: {
+          body: {
+            receipt_id: 'prf_live_testnet_01',
+            network: 'eip155:2368',
+          },
+        },
+      },
+    ],
+  },
 ];
