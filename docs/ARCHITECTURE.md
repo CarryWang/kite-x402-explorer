@@ -121,3 +121,19 @@ High-throughput autonomous agent networks require sub-second state queries and r
 
 3. **Batch Endpoint Health Probe (`evaluateEndpointProbe`)**:
    - Parallel probe evaluating HTTP 402 handshake headers (`PAYMENT-REQUIRED`) and latency thresholds to prevent dispatching agent workloads to degraded endpoints.
+
+---
+
+## 6. Optimistic Dispute Window & Slashing Protocol
+
+To ensure trustless execution between untrusted autonomous agents without requiring synchronous on-chain proofs for every micropayment, the network implements an **Optimistic Dispute Window**:
+
+1. **Challenge Window Lifecycle (`isWithinChallengeWindow`)**:
+   - Every confirmed x402 payment enters a 3,600-second optimistic challenge period.
+   - Any watcher or payer agent can challenge an invalid outcome (e.g. hash mismatch, upstream SLA breach, or falsified payload) by staking a challenger bond.
+
+2. **Economic Slashing Distribution (`calculateSlashingPayout`)**:
+   - If a provider is proven fraudulent, their escrowed bond is slashed:
+     - **80%** is refunded directly to the aggrieved payer agent.
+     - **15%** is distributed to the challenger who submitted the fraud proof.
+     - **5%** is retained in the arbiter DAO treasury for protocol maintenance.
