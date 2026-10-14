@@ -173,3 +173,22 @@ For complex, long-running agent assignments (e.g. distributed crawling, neural n
 
 3. **Time-Lock Expiration & Client Protection (`checkTimeoutRefundEligibility`)**:
    - If a worker agent stalls or becomes unresponsive before milestone deadlines, remaining locked funds are automatically eligible for full refund back to the client.
+
+---
+
+## 9. AI Dataset Escrow & Quality-Weighted Revenue Share
+
+To power decentralized AI model training, dataset curation networks rely on distributed annotator and collector agents. `kite-agent-data-escrow` coordinates verifiable dataset batch payouts.
+
+### Revenue Share Allocation Protocol
+1. **Quality-Weighted Share Formula (`calculateWeightedRevenueShare`)**:
+   - Each contributor agent's payout is weighted by accepted token volume and quality audit benchmark:
+     $$\text{Weight}_i = \text{acceptedTokens}_i \times \text{qualityScoreBps}_i$$
+   - Agents scoring below minimum acceptance criteria (5,000 bps = 50%) are automatically disqualified from the reward pool.
+
+2. **Zero-Loss Conservation & Dust Absorption**:
+   - Payout calculations use integer arithmetic. Any remainder dust is absorbed by the final qualified contributor, ensuring exact conservation:
+     $$\sum_{i} \text{allocatedWei}_i = \text{totalPoolWei}$$
+
+3. **Batch Threshold Evaluation (`evaluateBatchThresholds`)**:
+   - The dataset escrow vault only authorizes on-chain EIP-3009 fund distribution if the batch aggregate quality exceeds the target benchmark (e.g. 70%).
