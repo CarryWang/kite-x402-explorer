@@ -7,7 +7,7 @@ interface CodeSnippetGeneratorProps {
   endpoint: ServiceEndpoint;
 }
 
-type LangTab = 'curl' | 'ts' | 'python' | 'agent';
+type LangTab = 'curl' | 'ts' | 'python' | 'agent' | 'swarm';
 
 export const CodeSnippetGenerator: React.FC<CodeSnippetGeneratorProps> = ({
   service,
@@ -187,6 +187,32 @@ export const kite${service.name.replace(/[^a-zA-Z0-9]/g, '')}Tool = {
 };`;
   };
 
+  const getSwarmOrchestratorCode = () => {
+    return `// Kite Agent Swarm Orchestrator DAG Node Definition
+export interface SwarmAgentTask {
+  taskId: string;
+  targetEndpoint: "${endpoint.path}";
+  serviceCostUsd: "${endpoint.price_usd}";
+  upstreamNetwork: "${service.network}";
+  dependencies: string[];
+}
+
+export const ${service.name.replace(/[^a-zA-Z0-9]/g, '')}SwarmStep: SwarmAgentTask = {
+  taskId: "task_${service.name.replace(/-/g, '_')}_exec",
+  targetEndpoint: "${endpoint.path}",
+  serviceCostUsd: "${endpoint.price_usd}",
+  upstreamNetwork: "${service.network}",
+  dependencies: ["step_research_synthesis"],
+};
+
+// Swarm Bounty Split Matrix (100% total)
+export const swarmBountyMatrix = [
+  { role: "coordinator", bps: 4000 }, // 40%
+  { role: "executor", bps: 4000 },    // 40%
+  { role: "sentinel_verifier", bps: 2000 } // 20%
+];`;
+  };
+
   const getActiveCode = () => {
     switch (activeTab) {
       case 'curl':
@@ -197,6 +223,8 @@ export const kite${service.name.replace(/[^a-zA-Z0-9]/g, '')}Tool = {
         return getPythonCode();
       case 'agent':
         return getAgentToolCode();
+      case 'swarm':
+        return getSwarmOrchestratorCode();
     }
   };
 
@@ -276,6 +304,24 @@ export const kite${service.name.replace(/[^a-zA-Z0-9]/g, '')}Tool = {
             }}
           >
             <Bot size={12} /> Agent Tool
+          </button>
+          <button
+            onClick={() => setActiveTab('swarm')}
+            style={{
+              padding: '3px 10px',
+              fontSize: '0.75rem',
+              borderRadius: '4px',
+              border: 'none',
+              cursor: 'pointer',
+              background: activeTab === 'swarm' ? 'rgba(16, 185, 129, 0.2)' : 'transparent',
+              color: activeTab === 'swarm' ? 'var(--accent-emerald)' : 'var(--text-muted)',
+              fontWeight: activeTab === 'swarm' ? 600 : 400,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+            }}
+          >
+            <Bot size={12} /> Swarm DAG
           </button>
         </div>
 
