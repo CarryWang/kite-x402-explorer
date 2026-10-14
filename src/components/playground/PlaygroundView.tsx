@@ -7,6 +7,7 @@ import { ProtocolVisualizer } from './ProtocolVisualizer.js';
 import { createSignedEIP3009Payload } from '../../lib/eip3009.js';
 import { CheckCircle2, RefreshCw, AlertTriangle, ShieldCheck, History } from 'lucide-react';
 import { saveProof } from '../../services/proof-logger.js';
+import { ProtocolPerformanceTracker } from '../../lib/performance-tracker.js';
 
 interface PlaygroundViewProps {
   services: ServiceManifest[];
@@ -28,6 +29,14 @@ export const PlaygroundView: React.FC<PlaygroundViewProps> = ({
     initialEndpoint || currentService?.endpoints[0] || services[0].endpoints[0]
   );
   const [activeSigner, setActiveSigner] = useState<WalletSigner | null>(null);
+
+  const tracker = React.useMemo(() => new ProtocolPerformanceTracker(), []);
+  const [latencyTimers, setLatencyTimers] = useState<{
+    probeMs?: number;
+    signMs?: number;
+    settleMs?: number;
+    totalMs?: number;
+  }>({});
 
   useEffect(() => {
     if (initialService) {
@@ -77,6 +86,7 @@ export const PlaygroundView: React.FC<PlaygroundViewProps> = ({
   // Step 1: Initial Request returning 402
   const handleTriggerInitialRequest = async () => {
     setLoading(true);
+    const t0 = performance.now();
     try {
       const mockUrl = `/api/mock-x402/${currentService.name}${currentEndpoint.path}`;
       const res = await fetch(mockUrl, {
@@ -132,6 +142,8 @@ export const PlaygroundView: React.FC<PlaygroundViewProps> = ({
         )
       );
     } finally {
+      const probeElapsed = Math.round(performance.now() - t0);
+      setLatencyTimers((prev) => ({ ...prev, probeMs: probeElapsed }));
       setStep(2);
       setLoading(false);
     }
@@ -145,6 +157,7 @@ export const PlaygroundView: React.FC<PlaygroundViewProps> = ({
     }
 
     setLoading(true);
+    const t0 = performance.now();
     try {
       const accept = challengePayload.accepts[0];
       const result = await createSignedEIP3009Payload({
@@ -164,6 +177,8 @@ export const PlaygroundView: React.FC<PlaygroundViewProps> = ({
       console.error('Signing failed:', err);
       alert('Signing failed or rejected: ' + String(err));
     } finally {
+      const signElapsed = Math.round(performance.now() - t0);
+      setLatencyTimers((prev) => ({ ...prev, signMs: signElapsed }));
       setLoading(false);
     }
   };
@@ -182,6 +197,7 @@ export const PlaygroundView: React.FC<PlaygroundViewProps> = ({
   const handleSendPaidRequest = async () => {
     if (!simulatedSignature) return;
     setLoading(true);
+    const t0 = performance.now();
     const auth = extractAuthFromSig();
 
     // 1. Simulate Edge Case: Upstream 502 Failure
@@ -369,6 +385,28 @@ export const PlaygroundView: React.FC<PlaygroundViewProps> = ({
         responseBodySnippet: JSON.stringify(fallbackData),
       });
     } finally {
+      const settleElapsed = Math.round(performance.now() - t0);
+      const probeMs = latencyTimers.probeMs || 0;
+      const signMs = latencyTimers.signMs || 0;
+      const totalMs = probeMs + signMs + settleElapsed;
+
+      setLatencyTimers((prev) => ({
+        ...prev,
+        settleMs: settleElapsed,
+        totalMs,
+      }));
+
+      tracker.recordMetric({
+        serviceName: currentService.name,
+        endpointPath: currentEndpoint.path,
+        step1ProbeMs: probeMs,
+        step2SigningMs: signMs,
+        step3SettlementMs: settleElapsed,
+        totalRoundtripMs: totalMs,
+        timestamp: Date.now(),
+        success: true,
+      });
+
       setLoading(false);
     }
   };
@@ -725,6 +763,7 @@ export const PlaygroundView: React.FC<PlaygroundViewProps> = ({
         httpMethod={currentEndpoint.method}
         payerAddress={activeSigner?.address}
         onOpenProofLogs={onOpenProofLogs}
+        latencyBreakdown={latencyTimers}
       />
     </div>
   );

@@ -27,6 +27,12 @@ interface ProtocolVisualizerProps {
   httpMethod?: string;
   payerAddress?: string;
   onOpenProofLogs?: () => void;
+  latencyBreakdown?: {
+    probeMs?: number;
+    signMs?: number;
+    settleMs?: number;
+    totalMs?: number;
+  };
 }
 
 export const ProtocolVisualizer: React.FC<ProtocolVisualizerProps> = ({
@@ -42,6 +48,7 @@ export const ProtocolVisualizer: React.FC<ProtocolVisualizerProps> = ({
   httpMethod = 'GET',
   payerAddress = '0x0000000000000000000000000000000000000000',
   onOpenProofLogs,
+  latencyBreakdown,
 }) => {
   const chainConfig = KITE_CHAINS[network] || KITE_CHAINS['eip155:2368'];
   const isSettled = responseStatus === 200 && Boolean(txHash);
@@ -250,6 +257,7 @@ export const ProtocolVisualizer: React.FC<ProtocolVisualizerProps> = ({
             {responseStatus ? (
               <span style={{ color: responseStatus === 200 ? 'var(--accent-emerald)' : 'var(--accent-rose)' }}>
                 Status {responseStatus}
+                {latencyBreakdown?.totalMs && ` (${latencyBreakdown.totalMs}ms)`}
               </span>
             ) : (
               'Pending result'
@@ -257,6 +265,36 @@ export const ProtocolVisualizer: React.FC<ProtocolVisualizerProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Latency Timing Telemetry Banner */}
+      {latencyBreakdown && latencyBreakdown.totalMs !== undefined && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            background: 'rgba(0, 0, 0, 0.3)',
+            border: '1px solid var(--border-glass)',
+            borderRadius: 'var(--radius-sm)',
+            padding: '0.5rem 0.85rem',
+            marginBottom: '1rem',
+            fontSize: '0.72rem',
+            fontFamily: 'var(--font-mono)',
+            color: 'var(--text-muted)',
+            flexWrap: 'wrap',
+            gap: '0.5rem',
+          }}
+        >
+          <span style={{ color: 'var(--accent-cyan)', fontWeight: 600 }}>⏱️ x402 Stage Latency:</span>
+          <span>402 Discovery: <strong style={{ color: 'var(--text-primary)' }}>{latencyBreakdown.probeMs ?? 0}ms</strong></span>
+          <span>•</span>
+          <span>EIP-3009 Signing: <strong style={{ color: 'var(--accent-purple)' }}>{latencyBreakdown.signMs ?? 0}ms</strong></span>
+          <span>•</span>
+          <span>Facilitator Settlement: <strong style={{ color: 'var(--accent-emerald)' }}>{latencyBreakdown.settleMs ?? 0}ms</strong></span>
+          <span>•</span>
+          <span>Total Roundtrip: <strong style={{ color: 'var(--accent-cyan)' }}>{latencyBreakdown.totalMs}ms</strong></span>
+        </div>
+      )}
 
       {/* Signature decomposition details */}
       {auth && (
