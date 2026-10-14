@@ -23,7 +23,7 @@ export interface SecurityAuditVerdict {
 }
 
 export interface TargetGuardPolicy {
-  maxAmountCapUnits: bigint;
+  maxAmountCapUnitsByNetwork: Record<string, bigint>;
   allowedNetworks: string[];
   allowedRecipients?: string[];
   blockedRecipients?: string[];
@@ -31,7 +31,10 @@ export interface TargetGuardPolicy {
 }
 
 export const DEFAULT_GUARD_POLICY: TargetGuardPolicy = {
-  maxAmountCapUnits: 50_000_000_000_000_000_000n, // 50 pieUSD or 50 USDC
+  maxAmountCapUnitsByNetwork: {
+    'eip155:2368': 50_000_000_000_000_000_000n, // 50 pieUSD (18 decimals)
+    'eip155:2366': 50_000_000n, // 50 USDC.e (6 decimals)
+  },
   allowedNetworks: ['eip155:2368', 'eip155:2366'],
   maxTimeoutSeconds: 3600,
   blockedRecipients: [
@@ -113,11 +116,12 @@ export function auditX402ChallengeTarget(
       });
       riskScore += 60;
     }
-    if (requestedUnits > policy.maxAmountCapUnits) {
+    const amountCap = policy.maxAmountCapUnitsByNetwork[accept.network];
+    if (amountCap !== undefined && requestedUnits > amountCap) {
       violations.push({
         code: 'AMOUNT_EXCEEDS_CAP',
         severity: 'HIGH',
-        message: `Requested payment amount (${accept.amount} units) exceeds maximum safety policy cap (${policy.maxAmountCapUnits.toString()})`,
+        message: `Requested payment amount (${accept.amount} units) exceeds maximum safety policy cap (${amountCap.toString()})`,
       });
       riskScore += 30;
     }
@@ -159,10 +163,10 @@ export function assertSafeSigningTarget(
   expectedRecipient: string,
   expectedNetwork: string,
   signerType: 'injected' | 'sandbox',
-  challengeSource: 'server' | 'fallback'
+  _challengeSource: 'server' | 'fallback'
 ): SecurityAuditVerdict {
-  if (challengeSource === 'fallback' && signerType === 'injected') {
-    throw new Error('Browser wallet cannot sign an offline fallback challenge');
+  if (signerType === 'injected') {
+    throw new Error('Browser wallet cannot sign a simulated payment challenge');
   }
   if (accept.network !== expectedNetwork) {
     throw new Error(`Challenge network ${accept.network} does not match selected service ${expectedNetwork}`);

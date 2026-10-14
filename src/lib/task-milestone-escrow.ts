@@ -43,6 +43,13 @@ export function createMilestoneTask(
   milestonesConfig: Array<{ milestoneId: string; title: string; percentageBps: number; deliverableHash?: `0x${string}` }>,
   durationSeconds: number = 86400 * 7 // 7 days default
 ): TaskEscrowVault {
+  if (totalDepositWei <= 0n) throw new Error('Escrow deposit must be positive');
+  if (milestonesConfig.some((m) => !Number.isInteger(m.percentageBps) || m.percentageBps <= 0 || m.percentageBps > 10000)) {
+    throw new Error('Each milestone allocation must be an integer from 1 to 10000 basis points');
+  }
+  if (new Set(milestonesConfig.map((m) => m.milestoneId)).size !== milestonesConfig.length) {
+    throw new Error('Duplicate milestone ID');
+  }
   const totalBps = milestonesConfig.reduce((acc, curr) => acc + curr.percentageBps, 0);
   if (totalBps !== 10000) {
     throw new Error(`Total milestone percentage must equal 10000 bps (100%), received: ${totalBps}`);

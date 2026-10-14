@@ -19,7 +19,7 @@ The bundled service directory and `/api/mock-x402` route are demonstration data.
 2. **Interactive x402 Protocol Playground**:
    - 3-step interactive protocol execution:
      - **Step 1**: Discover HTTP 402 challenge & parse `PAYMENT-REQUIRED` headers.
-     - **Step 2**: EIP-3009 `TransferWithAuthorization` typed signing with browser wallets (MetaMask/Rabby) or sandbox agent key generator.
+     - **Step 2**: EIP-3009 `TransferWithAuthorization` typed signing with an isolated sandbox agent key. The local mock flow disables browser-wallet signing.
      - **Step 3**: Dispatch `PAYMENT-SIGNATURE` $\to$ facilitator settlement $\to$ HTTP 200 response.
    - Guardrails against edge cases: upstream 502 no-deduction protection & signature deadline validation.
 

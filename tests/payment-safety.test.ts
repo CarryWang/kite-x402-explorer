@@ -36,16 +36,28 @@ test('signing refuses a server challenge that changes the selected service recip
     scheme: 'exact' as const, network: 'eip155:2368', asset: KITE_CHAINS['eip155:2368'].assetAddress,
     amount: '100', payTo: recipient, maxTimeoutSeconds: 60,
   };
-  assert.throws(() => targetGuard.assertSafeSigningTarget(accept, payer, 'eip155:2368', 'injected', 'server'), /recipient/i);
+  assert.throws(() => targetGuard.assertSafeSigningTarget(accept, payer, 'eip155:2368', 'sandbox', 'server'), /recipient/i);
 });
 
-test('browser wallet cannot sign an offline fallback challenge', () => {
+test('browser wallet cannot sign any mock challenge', () => {
   const accept = {
     scheme: 'exact' as const, network: 'eip155:2368', asset: KITE_CHAINS['eip155:2368'].assetAddress,
     amount: '100', payTo: recipient, maxTimeoutSeconds: 60,
   };
-  assert.throws(() => targetGuard.assertSafeSigningTarget(accept, recipient, 'eip155:2368', 'injected', 'fallback'), /fallback/i);
+  assert.throws(() => targetGuard.assertSafeSigningTarget(accept, recipient, 'eip155:2368', 'injected', 'fallback'), /browser wallet/i);
+  assert.throws(() => targetGuard.assertSafeSigningTarget(accept, recipient, 'eip155:2368', 'injected', 'server'), /browser wallet/i);
   assert.doesNotThrow(() => targetGuard.assertSafeSigningTarget(accept, recipient, 'eip155:2368', 'sandbox', 'fallback'));
+});
+
+test('target guard uses the correct 50-token cap for each asset precision', () => {
+  for (const [network, accepted, rejected] of [
+    ['eip155:2366', '50000000', '50000001'],
+    ['eip155:2368', '50000000000000000000', '50000000000000000001'],
+  ]) {
+    const accept = { scheme: 'exact' as const, network, asset: KITE_CHAINS[network].assetAddress, amount: accepted, payTo: recipient };
+    assert.equal(auditX402ChallengeTarget(accept).isSafe, true);
+    assert.equal(auditX402ChallengeTarget({ ...accept, amount: rejected }).isSafe, false);
+  }
 });
 
 test('milestone payout requires the configured deliverable hash', () => {
@@ -62,6 +74,19 @@ test('milestone payout is blocked after vault expiry', () => {
   ]);
   vault.expiryTimestamp = 0;
   assert.throws(() => releaseMilestonePayout(vault, 'm1'), /expired/i);
+});
+
+test('escrow rejects invalid allocations and nonpositive deposits', () => {
+  const milestones = [
+    { milestoneId: 'm1', title: 'One', percentageBps: 20000 },
+    { milestoneId: 'm2', title: 'Two', percentageBps: -10000 },
+  ];
+  assert.throws(() => createMilestoneTask('task', payer, recipient, 100n, milestones), /basis points/i);
+  assert.throws(() => createMilestoneTask('task', payer, recipient, 0n, [{ milestoneId: 'm1', title: 'One', percentageBps: 10000 }]), /positive/i);
+  assert.throws(() => createMilestoneTask('task', payer, recipient, 100n, [
+    { milestoneId: 'm1', title: 'One', percentageBps: 5000 },
+    { milestoneId: 'm1', title: 'Two', percentageBps: 5000 },
+  ]), /duplicate/i);
 });
 
 test('a fabricated reputation score cannot grant credit without trusted verification', () => {
@@ -98,6 +123,14 @@ test('stream channel rejects nonpositive capacity', () => {
 test('swarm bounty split rejects a negative bounty', () => {
   const result = calculateSwarmBountySplit(-100n, [
     { agentRole: 'coordinator', weightBps: 10000, assignedAddress: recipient },
+  ]);
+  assert.equal(result.isValid, false);
+});
+
+test('swarm bounty split rejects out-of-range weights even when their sum is 10000', () => {
+  const result = calculateSwarmBountySplit(100n, [
+    { agentRole: 'coordinator', weightBps: 20000, assignedAddress: payer },
+    { agentRole: 'auditor', weightBps: -10000, assignedAddress: recipient },
   ]);
   assert.equal(result.isValid, false);
 });

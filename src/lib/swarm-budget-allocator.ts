@@ -48,6 +48,16 @@ export function calculateSwarmBountySplit(
     };
   }
 
+  if (allocations.some((a) => !Number.isInteger(a.weightBps) || a.weightBps <= 0 || a.weightBps > 10000)) {
+    return {
+      totalAmountUnits: totalBountyUnits,
+      totalDustRefundUnits: 0n,
+      shares: [],
+      isValid: false,
+      error: 'Each agent weight must be an integer from 1 to 10000 basis points',
+    };
+  }
+
   const totalBps = allocations.reduce((sum, a) => sum + a.weightBps, 0);
   if (totalBps !== 10000) {
     return {

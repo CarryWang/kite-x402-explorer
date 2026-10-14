@@ -23,7 +23,7 @@ export interface ReceiptAuditorStats {
 }
 
 export class ReceiptAnomalyAuditor {
-  private seenNonces: Map<string, string> = new Map(); // nonce -> proofId
+  private seenNonces: Map<string, string> = new Map(); // network/token/authorizer/nonce -> proofId
 
   /**
    * Audits an individual proof record for transaction anomalies, nonces reuse, and expiration.
@@ -32,7 +32,9 @@ export class ReceiptAnomalyAuditor {
     // 1. Check Replay Attack / Nonce Duplication
     const nonce = proof.eip3009Details?.nonce;
     if (nonce && nonce !== '0x0') {
-      const existingProofId = this.seenNonces.get(nonce);
+      const nonceScope = [proof.network, proof.tokenAddress, proof.eip3009Details?.from || proof.payerAddress, nonce]
+        .map((part) => part.toLowerCase()).join(':');
+      const existingProofId = this.seenNonces.get(nonceScope);
       if (existingProofId && existingProofId !== proof.id) {
         return {
           hasAnomaly: true,
@@ -41,7 +43,7 @@ export class ReceiptAnomalyAuditor {
           description: `Nonce collision detected! Nonce ${nonce.slice(0, 10)}... was already authorized in record ${existingProofId}. Potential replay attack.`,
         };
       }
-      this.seenNonces.set(nonce, proof.id);
+      this.seenNonces.set(nonceScope, proof.id);
     }
 
     // 2. Timestamp sanity check (cannot be > 5 minutes in future)

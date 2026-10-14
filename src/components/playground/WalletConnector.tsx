@@ -32,11 +32,13 @@ export interface WalletSigner {
 interface WalletConnectorProps {
   targetNetwork: 'eip155:2366' | 'eip155:2368';
   onSignerReady: (signer: WalletSigner | null) => void;
+  allowInjected?: boolean;
 }
 
 export const WalletConnector: React.FC<WalletConnectorProps> = ({
   targetNetwork,
   onSignerReady,
+  allowInjected = true,
 }) => {
   const [walletType, setWalletType] = useState<'sandbox' | 'injected'>('sandbox');
   const [injectedAddress, setInjectedAddress] = useState<`0x${string}` | null>(null);
@@ -68,6 +70,7 @@ export const WalletConnector: React.FC<WalletConnectorProps> = ({
 
   // Handle Injected Wallet Connect
   const connectInjectedWallet = async () => {
+    if (!allowInjected) return;
     if (typeof window === 'undefined' || !(window as unknown as { ethereum?: unknown }).ethereum) {
       alert('No EVM browser wallet detected (MetaMask / Rabby). Please install one or use Sandbox mode.');
       return;
@@ -148,7 +151,7 @@ export const WalletConnector: React.FC<WalletConnectorProps> = ({
           >
             Sandbox Key
           </button>
-          <button
+          {allowInjected && <button
             onClick={connectInjectedWallet}
             style={{
               padding: '3px 10px',
@@ -162,7 +165,7 @@ export const WalletConnector: React.FC<WalletConnectorProps> = ({
             }}
           >
             Browser Wallet
-          </button>
+          </button>}
         </div>
       </div>
 

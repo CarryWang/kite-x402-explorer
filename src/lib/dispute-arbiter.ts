@@ -92,6 +92,7 @@ export function formatDisputeDigest(claim: OptimisticDisputeClaim): {
   return {
     disputeId: claim.disputeId,
     windowRemainingSec: remaining,
-    isEligibleForSlashing: claim.status === 'opened' || claim.status === 'in_challenge_window',
+    isEligibleForSlashing: isWithinChallengeWindow(claim, now) &&
+      (claim.status === 'opened' || claim.status === 'in_challenge_window'),
   };
 }

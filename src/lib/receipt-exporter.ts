@@ -1,12 +1,13 @@
 import type { PaymentProofRecord, VerifiablePaymentReceipt } from '../types/proof.js';
 import { KITE_CHAINS } from '../types/kite.js';
+import { keccak256, toHex } from 'viem';
 
 /**
  * Builds a standardized, verifiable JSON receipt for an x402 payment proof record.
  */
 export function buildVerifiableReceipt(proof: PaymentProofRecord): VerifiablePaymentReceipt {
   const chainConfig = KITE_CHAINS[proof.network] || KITE_CHAINS['eip155:2368'];
-  const isSettled = proof.status === 'settled' || proof.status === 'simulated';
+  const isSettled = proof.status === 'settled' && Boolean(proof.txHash);
 
   return {
     $schema: 'https://gokite.ai/schemas/x402-receipt-v1.json',
@@ -49,23 +50,19 @@ export function buildVerifiableReceipt(proof: PaymentProofRecord): VerifiablePay
       },
     },
     verification: {
-      clientVerified: true,
+      clientVerified: false,
       guaranteeNote:
-        proof.status === 'aborted_502'
-          ? 'Guaranteed: Zero funds deducted. Upstream returned 5xx status.'
-          : proof.status === 'expired_sig'
-          ? 'Transaction aborted: Signature expired before execution.'
-          : 'Cryptographically verified EIP-3009 transfer authorization settled via Kite Facilitator.',
-      receiptDigest: `0x${Array.from(
-        new TextEncoder().encode(
-          `${proof.id}:${proof.network}:${proof.payerAddress}:${proof.payToAddress}:${proof.amountRaw}:${proof.txHash || 'none'}`
-        )
-      )
-        .reduce((acc, byte) => (acc * 31 + byte) >>> 0, 0)
-        .toString(16)
-        .padStart(8, '0')}`,
+        proof.status === 'simulated'
+          ? 'Simulated local payment only. No facilitator or on-chain settlement was verified.'
+          : proof.status === 'settled'
+          ? 'Settlement is reported by this record; verify the transaction independently on-chain.'
+          : 'This record does not verify an on-chain settlement or final token balance.',
+      // Content fingerprint for comparison, not an authenticated settlement proof.
+      receiptDigest: keccak256(toHex(
+        `${proof.id}:${proof.network}:${proof.payerAddress}:${proof.payToAddress}:${proof.amountRaw}:${proof.txHash || 'none'}`
+      )),
       securityAudit: {
-        targetGuardPassed: proof.status !== 'aborted_502' && proof.status !== 'expired_sig',
+        targetGuardPassed: false,
         riskScore: proof.status === 'settled' ? 0 : 25,
       },
     },

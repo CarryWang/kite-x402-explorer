@@ -162,7 +162,7 @@ export const PlaygroundView: React.FC<PlaygroundViewProps> = ({
     }
   };
 
-  // Step 2: Sign real EIP-3009 Authorization via active signer (Sandbox or Web3 Wallet)
+  // Step 2: Sign the mock authorization with an isolated sandbox key.
   const handleSignAuthorization = async () => {
     if (!activeSigner || !challengePayload || !challengePayload.accepts[0]) {
       alert('Wallet signer not initialized');
@@ -560,7 +560,7 @@ export const PlaygroundView: React.FC<PlaygroundViewProps> = ({
         >
           <ShieldCheck size={20} color="var(--accent-rose)" />
           <div style={{ fontSize: '0.85rem', color: 'var(--text-primary)' }}>
-            <strong>Safety Invariant Test:</strong> Simulating upstream crash. Kite x402 guarantees that if the API fails, the facilitator will abort on-chain broadcast, keeping your tokens safe!
+            <strong>Safety Invariant Test:</strong> Simulating an upstream crash in this local demo. No facilitator or on-chain transfer is involved.
           </div>
         </div>
       )}
@@ -569,6 +569,7 @@ export const PlaygroundView: React.FC<PlaygroundViewProps> = ({
       <WalletConnector
         targetNetwork={currentService.network}
         onSignerReady={(signer) => setActiveSigner(signer)}
+        allowInjected={false}
       />
 
       {/* 3-Step Interactive Process */}
