@@ -88,3 +88,18 @@ App.tsx
 ├── PlaygroundView.tsx (3-step payment flow simulation & JSON response viewer)
 └── DocsView.tsx (Architecture docs & 28-day roadmap)
 ```
+
+---
+
+## 4. Multi-Agent Swarm DAG & Bounty Allocation Flow
+
+In collaborative multi-agent swarms (e.g., `kite-agent-swarm`), a master coordinator decomposes a complex goal into a Directed Acyclic Graph (DAG) of subtasks executed by specialized agents (e.g., data crawlers, analyzers, verifiers).
+
+### Atomic Settlement & Conservation Rule
+When splitting protocol bounties or service payouts across swarm agents, the `SwarmBudgetAllocator` enforces exact conservation of funds:
+
+$$\sum_{i} \text{allocated\_amount}_i + \text{dust\_refund} = \text{total\_bounty\_wei}$$
+
+1. **Basis Points Split**: Each agent's share is quantified in basis points ($\text{bps}$, where $10000 \text{ bps} = 100\%$).
+2. **Dust Protection**: Remainder fractions from integer division (`total_bounty_wei % 10000n`) are preserved and refunded to the designated treasury or coordinator address, guaranteeing zero wei loss.
+3. **Execution Dependency Graph**: Each subtask records upstream dependency receipts, ensuring downstream agents only trigger x402 payment authorizations upon verifiable cryptographic proof of prerequisite steps.

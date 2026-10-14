@@ -386,4 +386,57 @@ export const INITIAL_SERVICES: ServiceManifest[] = [
       },
     ],
   },
+  {
+    schema: 1,
+    name: 'kite-agent-swarm',
+    display_name: 'Autonomous Multi-Agent Swarm Orchestrator',
+    description: 'Decentralized DAG task orchestrator for multi-agent workflows, state sync, and atomic x402 bounty splits on Kite Chain.',
+    maintainer: {
+      github: 'aromaticthrif',
+      contact: 'swarm-orchestrator@gokite.ai',
+    },
+    status: 'live',
+    base_url: 'https://swarm.gokite.ai',
+    network: 'eip155:2366',
+    pay_to: '0x6666666666666666666666666666666666666666',
+    upstream: {
+      name: 'Kite Swarm Engine',
+      url: 'https://api.swarm-cluster.internal',
+      requires_api_key: false,
+    },
+    categories: ['ai', 'other'],
+    tags: ['swarm', 'dag', 'orchestrator', 'bounty-split', 'x402'],
+    source: 'typescript-express',
+    endpoints: [
+      {
+        method: 'POST',
+        path: '/v1/swarm/orchestrate',
+        summary: 'Decompose and dispatch parallel multi-agent subtasks with dependency graph execution.',
+        price_usd: '0.015',
+        example_request: {
+          body: {
+            task_type: 'multi_agent_consensus',
+            dag_nodes: 4,
+            max_budget_usd: '0.10',
+          },
+        },
+      },
+      {
+        method: 'POST',
+        path: '/v1/swarm/split-bounty',
+        summary: 'Compute exact atomic payout splits and receipt hashes for swarm agent participants.',
+        price_usd: '0.003',
+        example_request: {
+          body: {
+            total_bounty_wei: '1000000000000000000',
+            shares: [
+              { agent_id: 'agent_coordinator', basis_points: 4000 },
+              { agent_id: 'agent_executor', basis_points: 4000 },
+              { agent_id: 'agent_verifier', basis_points: 2000 },
+            ],
+          },
+        },
+      },
+    ],
+  },
 ];
