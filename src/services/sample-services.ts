@@ -554,4 +554,59 @@ export const INITIAL_SERVICES: ServiceManifest[] = [
       },
     ],
   },
+  {
+    schema: 1,
+    name: 'kite-agent-task-escrow',
+    display_name: 'Milestone Task Escrow & Release Vault',
+    description: 'Autonomous agent task marketplace escrow vault with basis points milestone allocations and verifiable deliverable releases on Kite Chain.',
+    maintainer: {
+      github: 'cheerfulbay',
+      contact: 'task-escrow@gokite.ai',
+    },
+    status: 'live',
+    base_url: 'https://escrow.gokite.ai',
+    network: 'eip155:2366',
+    pay_to: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    upstream: {
+      name: 'Kite Escrow Settlement Engine',
+      url: 'https://escrow.internal.gokite.ai',
+      requires_api_key: false,
+    },
+    categories: ['finance', 'ai'],
+    tags: ['escrow', 'milestone', 'vault', 'settlement', 'x402'],
+    source: 'typescript-express',
+    endpoints: [
+      {
+        method: 'POST',
+        path: '/v1/escrow/create-task',
+        summary: 'Deposit and initialize a milestone-gated task escrow vault for autonomous agent workers.',
+        price_usd: '0.01',
+        example_request: {
+          body: {
+            task_id: 'task_model_tune_88',
+            agent_worker: '0x7aB6f3ed87C42eF0aDb67Ed95090f8bF5240149e',
+            deposit_wei: '1000000000000000000',
+            milestones: [
+              { milestone_id: 'm1', percentage_bps: 3000, title: 'Data Extraction' },
+              { milestone_id: 'm2', percentage_bps: 4000, title: 'LoRA Fine-tuning' },
+              { milestone_id: 'm3', percentage_bps: 3000, title: 'Evaluation Benchmark' },
+            ],
+          },
+        },
+      },
+      {
+        method: 'POST',
+        path: '/v1/escrow/release-milestone',
+        summary: 'Cryptographically verify deliverable hash and trigger installment release on Kite Chain.',
+        price_usd: '0.003',
+        example_request: {
+          body: {
+            task_id: 'task_model_tune_88',
+            milestone_id: 'm1',
+            deliverable_hash: '0x5b38da6a701c568545dcfcb03fcb875f56beddc4875f56beddc4875f56beddc4',
+          },
+        },
+      },
+    ],
+  },
 ];
