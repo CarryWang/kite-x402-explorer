@@ -103,3 +103,21 @@ $$\sum_{i} \text{allocated\_amount}_i + \text{dust\_refund} = \text{total\_bount
 1. **Basis Points Split**: Each agent's share is quantified in basis points ($\text{bps}$, where $10000 \text{ bps} = 100\%$).
 2. **Dust Protection**: Remainder fractions from integer division (`total_bounty_wei % 10000n`) are preserved and refunded to the designated treasury or coordinator address, guaranteeing zero wei loss.
 3. **Execution Dependency Graph**: Each subtask records upstream dependency receipts, ensuring downstream agents only trigger x402 payment authorizations upon verifiable cryptographic proof of prerequisite steps.
+
+---
+
+## 5. Telemetry Streaming & Batch Multicall Probing
+
+High-throughput autonomous agent networks require sub-second state queries and real-time observability across x402 payment settlements.
+
+### Architecture Overview
+1. **Multicall3 Aggregate Pattern (`0xcA11...CA11`)**:
+   - Compresses hundreds of sequential contract state inspections (e.g. checking agent authorization nonces, token balances, and facilitator parameters) into a single RPC query via canonical Multicall3 `aggregate3`.
+   - Dramatically cuts RPC round-trips and eliminates rate-limiting stalls for swarm agents.
+
+2. **Real-time Settlement Stream (`/v1/telemetry/stream`)**:
+   - `kite-agent-telemetry-indexer` monitors `TransferWithAuthorization` logs emitted across Kite Mainnet (2366) and Testnet (2368).
+   - Delivers low-latency Server-Sent Events (SSE) to connected dashboards, explorers, and downstream settlement triggers.
+
+3. **Batch Endpoint Health Probe (`evaluateEndpointProbe`)**:
+   - Parallel probe evaluating HTTP 402 handshake headers (`PAYMENT-REQUIRED`) and latency thresholds to prevent dispatching agent workloads to degraded endpoints.
