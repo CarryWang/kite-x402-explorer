@@ -193,4 +193,54 @@ export const INITIAL_SERVICES: ServiceManifest[] = [
       },
     ],
   },
+  {
+    schema: 1,
+    name: 'kite-agent-stream-router',
+    display_name: 'High-Throughput Stream Router & State Channel Settler',
+    description: 'Dynamic low-latency micropayment stream routing and cumulative state channel settlement network for AI agents on Kite Chain.',
+    maintainer: {
+      github: 'specificpict',
+      contact: 'stream-router@gokite.ai',
+    },
+    status: 'live',
+    base_url: 'https://router.gokite.ai',
+    network: 'eip155:2366',
+    pay_to: '0x9999999999999999999999999999999999999999',
+    upstream: {
+      name: 'Kite Stream Routing Mesh',
+      url: 'https://mesh.internal.gokite.ai',
+      requires_api_key: false,
+    },
+    categories: ['data', 'ai'],
+    tags: ['stream', 'router', 'state-channel', 'micropayment', 'x402'],
+    source: 'typescript-express',
+    endpoints: [
+      {
+        method: 'POST',
+        path: '/v1/router/route-stream',
+        summary: 'Dynamically routes continuous agent workloads through the lowest-latency x402 gateway.',
+        price_usd: '0.002',
+        example_request: {
+          body: {
+            destination_category: 'ai',
+            max_latency_ms: 100,
+            stream_protocol: 'sse',
+          },
+        },
+      },
+      {
+        method: 'POST',
+        path: '/v1/router/channel-settle',
+        summary: 'Commit cumulative micro-tickets and trigger on-chain EIP-3009 checkpoint settlement.',
+        price_usd: '0.005',
+        example_request: {
+          body: {
+            channel_id: 'chan_mesh_99',
+            final_nonce: 42,
+            total_settled_wei: '50000000000000000',
+          },
+        },
+      },
+    ],
+  },
 ];
