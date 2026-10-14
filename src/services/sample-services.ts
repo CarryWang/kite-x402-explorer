@@ -193,4 +193,53 @@ export const INITIAL_SERVICES: ServiceManifest[] = [
       },
     ],
   },
+  {
+    schema: 1,
+    name: 'kite-agent-dispute-arbiter',
+    display_name: 'Optimistic Dispute Arbiter & Slashing Engine',
+    description: 'Decentralized optimistic dispute resolution, challenge window verification, and escrow slashing for autonomous agent payments on Kite Chain.',
+    maintainer: {
+      github: 'ellipticalisl',
+      contact: 'dispute-arbiter@gokite.ai',
+    },
+    status: 'live',
+    base_url: 'https://dispute.gokite.ai',
+    network: 'eip155:2366',
+    pay_to: '0x8888888888888888888888888888888888888888',
+    upstream: {
+      name: 'Kite Arbiter Consensus Node',
+      url: 'https://arbiter.internal.gokite.ai',
+      requires_api_key: false,
+    },
+    categories: ['finance', 'ai'],
+    tags: ['dispute', 'slashing', 'arbiter', 'escrow', 'x402'],
+    source: 'typescript-express',
+    endpoints: [
+      {
+        method: 'POST',
+        path: '/v1/dispute/challenge',
+        summary: 'Submit an optimistic fraud proof challenge against an x402 payment receipt hash with challenge bond.',
+        price_usd: '0.02',
+        example_request: {
+          body: {
+            tx_hash: '0x5b38da6a701c568545dcfcb03fcb875f56beddc4',
+            reason: 'invalid_output_hash',
+            bond_wei: '100000000000000000',
+            evidence_uri: 'ipfs://QmXoypizjW3WknFiJnKLwHCnL72vedxjQkDDP1mXWo6uco',
+          },
+        },
+      },
+      {
+        method: 'GET',
+        path: '/v1/dispute/status',
+        summary: 'Query active dispute claim status, challenge window countdown, and slash distribution.',
+        price_usd: '0.002',
+        example_request: {
+          query: {
+            dispute_id: 'disp_9a4f2e1c',
+          },
+        },
+      },
+    ],
+  },
 ];
