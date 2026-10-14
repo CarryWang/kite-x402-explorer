@@ -49,6 +49,39 @@ export function saveProof(
 }
 
 /**
+ * Imports an array of payment proof records into local storage, merging and deduplicating by ID.
+ */
+export function importProofs(incoming: PaymentProofRecord[]): { added: number; total: number } {
+  if (!incoming || incoming.length === 0) {
+    return { added: 0, total: getStoredProofs().length };
+  }
+
+  const current = getStoredProofs();
+  const existingIds = new Set(current.map((p) => p.id));
+  const newRecords: PaymentProofRecord[] = [];
+
+  for (const record of incoming) {
+    if (!existingIds.has(record.id)) {
+      newRecords.push(record);
+      existingIds.add(record.id);
+    }
+  }
+
+  if (newRecords.length > 0) {
+    const updated = [...newRecords, ...current].slice(0, 100);
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+    } catch (err) {
+      console.error('Failed to write imported proofs to localStorage', err);
+    }
+    notifyListeners(updated);
+    return { added: newRecords.length, total: updated.length };
+  }
+
+  return { added: 0, total: current.length };
+}
+
+/**
  * Deletes a single proof record by ID.
  */
 export function deleteProof(id: string): void {

@@ -118,3 +118,79 @@ export async function copyReceiptJson(proof: PaymentProofRecord): Promise<boolea
     return false;
   }
 }
+
+export interface ReceiptValidationResult {
+  valid: boolean;
+  errors: string[];
+  proofRecord?: PaymentProofRecord;
+}
+
+/**
+ * Validates and converts an imported verifiable JSON receipt into a PaymentProofRecord.
+ */
+export function parseAndValidateReceipt(rawJson: unknown): ReceiptValidationResult {
+  const errors: string[] = [];
+
+  if (!rawJson || typeof rawJson !== 'object') {
+    return { valid: false, errors: ['Invalid JSON: Expected an object'] };
+  }
+
+  const r = rawJson as Record<string, any>;
+
+  // Check structure: can be either VerifiablePaymentReceipt or direct PaymentProofRecord
+  if (r.protocol && r.service && r.payment) {
+    // VerifiablePaymentReceipt structure
+    const p = r.payment;
+    const s = r.service;
+    const auth = p.authorization || {};
+    const settlement = p.settlement || {};
+
+    if (!p.network || !p.payer || !p.payTo) {
+      errors.push('Missing required payment fields: network, payer, or payTo');
+    }
+
+    if (errors.length > 0) {
+      return { valid: false, errors };
+    }
+
+    const proofRecord: PaymentProofRecord = {
+      id: r.receiptId || `prf_imp_${Date.now().toString(36)}`,
+      timestamp: r.timestamp || new Date().toISOString(),
+      serviceName: s.name || 'imported-service',
+      serviceDisplayName: s.displayName || s.name || 'Imported Service',
+      endpointPath: s.endpoint || '/',
+      httpMethod: s.method || 'GET',
+      network: p.network,
+      tokenSymbol: p.tokenSymbol || (p.network === 'eip155:2368' ? 'pieUSD' : 'USDC.e'),
+      tokenAddress: p.assetContract || '',
+      amountFormatted: p.amountFormatted || '0.001 USD',
+      amountRaw: p.amountRaw || '1000000000000000',
+      payerAddress: p.payer,
+      payToAddress: p.payTo,
+      status: settlement.status || (settlement.settled ? 'settled' : 'simulated'),
+      txHash: settlement.txHash,
+      eip3009Details: {
+        from: p.payer,
+        to: p.payTo,
+        value: p.amountRaw || '0',
+        nonce: auth.nonce || '0x0',
+        validAfter: Number(auth.validAfter) || 0,
+        validBefore: Number(auth.validBefore) || 0,
+        v: auth.v,
+        r: auth.r,
+        s: auth.s,
+      },
+      responseStatus: settlement.settled ? 200 : 400,
+    };
+
+    return { valid: true, errors: [], proofRecord };
+  } else if (r.id && r.serviceName && r.network && r.payerAddress) {
+    // Direct PaymentProofRecord structure
+    return { valid: true, errors: [], proofRecord: r as PaymentProofRecord };
+  }
+
+  return {
+    valid: false,
+    errors: ['Unrecognized receipt schema: must match x402-receipt-v1 standard'],
+  };
+}
