@@ -350,4 +350,40 @@ export const INITIAL_SERVICES: ServiceManifest[] = [
       },
     ],
   },
+  {
+    schema: 1,
+    name: 'kite-agent-telemetry-oracle',
+    display_name: 'Kite Settlement Latency & Gas Oracle',
+    description: 'Real-time sliding-window profiling of EIP-3009 verification latency, Facilitator relay timings, and gas benchmarks across Kite chains.',
+    maintainer: {
+      github: 'probableacade',
+      contact: 'telemetry@kitedev.org',
+    },
+    status: 'testnet',
+    base_url: 'https://telemetry-oracle.sandbox.gokite.ai',
+    network: 'eip155:2368',
+    pay_to: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    upstream: {
+      name: 'Settlement Benchmark Engine',
+      url: 'https://api.settlement-bench.internal',
+      requires_api_key: false,
+    },
+    categories: ['data', 'ai'],
+    tags: ['telemetry', 'latency-oracle', 'benchmark', 'eip-3009', 'kite-chain'],
+    source: 'typescript-express',
+    endpoints: [
+      {
+        method: 'GET',
+        path: '/v1/oracle/latencies',
+        summary: 'Query median and 95th percentile settlement times for Kite Facilitator endpoints.',
+        price_usd: '0.001',
+        example_request: {
+          query: {
+            window: '15m',
+            chain_id: '2368',
+          },
+        },
+      },
+    ],
+  },
 ];
