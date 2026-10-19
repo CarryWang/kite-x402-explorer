@@ -103,3 +103,138 @@ export function hashCapability(
   const content = `${provider.toLowerCase()}:${name.toLowerCase()}:${version}:${costPerCallUsd.toFixed(6)}`;
   return createHash('sha256').update(content).digest('hex');
 }
+
+export class AgentCapabilityRegistry {
+  private capabilities: Map<string, AgentCapability> = new Map();
+
+  public registerCapability(input: CapabilityRegistrationInput): AgentCapability {
+    const provider = normalizeAddress(input.provider);
+    if (!input.name || input.name.trim().length === 0) {
+      throw new Error('Capability name cannot be empty');
+    }
+    if (!/^\d+\.\d+\.\d+$/.test(input.version)) {
+      throw new Error(`Invalid semver version: ${input.version}`);
+    }
+    if (
+      typeof input.costPerCallUsd !== 'number' ||
+      input.costPerCallUsd <= 0 ||
+      !Number.isFinite(input.costPerCallUsd)
+    ) {
+      throw new Error(`Cost per call must be a positive number: ${input.costPerCallUsd}`);
+    }
+    if (
+      typeof input.avgLatencyMs !== 'number' ||
+      input.avgLatencyMs < 0 ||
+      !Number.isFinite(input.avgLatencyMs)
+    ) {
+      throw new Error(`Average latency must be non-negative: ${input.avgLatencyMs}`);
+    }
+    if (
+      typeof input.reputationScore !== 'number' ||
+      input.reputationScore < 0 ||
+      input.reputationScore > 100
+    ) {
+      throw new Error(`Reputation score must be between 0 and 100: ${input.reputationScore}`);
+    }
+    validateToolSchema(input.toolSchema);
+
+    const capabilityId = `cap_${provider.slice(2, 8)}_${input.name.toLowerCase().replace(/[^a-z0-9_-]/g, '_')}_${input.version}`;
+    if (this.capabilities.has(capabilityId)) {
+      throw new Error(`Capability already registered: ${capabilityId}`);
+    }
+
+    const hash = hashCapability(provider, input.name, input.version, input.costPerCallUsd);
+    const capability: AgentCapability = {
+      capabilityId,
+      provider,
+      name: input.name.trim(),
+      version: input.version,
+      category: input.category,
+      toolSchema: input.toolSchema,
+      costPerCallUsd: input.costPerCallUsd,
+      avgLatencyMs: input.avgLatencyMs,
+      reputationScore: input.reputationScore,
+      active: true,
+      registeredAt: Date.now(),
+      hash,
+    };
+
+    this.capabilities.set(capabilityId, capability);
+    return capability;
+  }
+
+  public getCapability(capabilityId: string): AgentCapability | undefined {
+    return this.capabilities.get(capabilityId);
+  }
+
+  public listCapabilities(provider?: string): AgentCapability[] {
+    const all = Array.from(this.capabilities.values());
+    if (!provider) {
+      return all;
+    }
+    const normalized = normalizeAddress(provider);
+    return all.filter((c) => c.provider === normalized);
+  }
+
+  public updateCapabilityStatus(capabilityId: string, active: boolean): boolean {
+    const existing = this.capabilities.get(capabilityId);
+    if (!existing) {
+      return false;
+    }
+    existing.active = active;
+    return true;
+  }
+
+  public deregisterCapability(capabilityId: string): boolean {
+    return this.capabilities.delete(capabilityId);
+  }
+
+  public queryCapabilities(query: CapabilityQuery): ParetoEvaluation[] {
+    let filtered = Array.from(this.capabilities.values()).filter((c) => c.active);
+
+    if (query.category) {
+      filtered = filtered.filter((c) => c.category === query.category);
+    }
+    if (typeof query.maxCostUsd === 'number') {
+      filtered = filtered.filter((c) => c.costPerCallUsd <= query.maxCostUsd!);
+    }
+    if (typeof query.maxLatencyMs === 'number') {
+      filtered = filtered.filter((c) => c.avgLatencyMs <= query.maxLatencyMs!);
+    }
+    if (typeof query.minReputation === 'number') {
+      filtered = filtered.filter((c) => c.reputationScore >= query.minReputation!);
+    }
+    if (query.keyword) {
+      const kw = query.keyword.toLowerCase();
+      filtered = filtered.filter(
+        (c) =>
+          c.name.toLowerCase().includes(kw) ||
+          c.toolSchema.description.toLowerCase().includes(kw) ||
+          c.toolSchema.parameters.some((p) => p.name.toLowerCase().includes(kw))
+      );
+    }
+
+    const evaluations: ParetoEvaluation[] = filtered.map((c) => {
+      const normalizedCostScore = 1 / (1 + c.costPerCallUsd * 100);
+      const normalizedLatencyScore = 1 / (1 + c.avgLatencyMs / 1000);
+      const repScore = c.reputationScore / 100;
+
+      const score = repScore * 0.4 + normalizedCostScore * 0.35 + normalizedLatencyScore * 0.25;
+
+      return {
+        capability: c,
+        score,
+        normalizedCostScore,
+        normalizedLatencyScore,
+        reputationScore: c.reputationScore,
+      };
+    });
+
+    evaluations.sort((a, b) => b.score - a.score);
+
+    if (typeof query.limit === 'number' && query.limit > 0) {
+      return evaluations.slice(0, query.limit);
+    }
+    return evaluations;
+  }
+}
