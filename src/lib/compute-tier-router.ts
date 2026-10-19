@@ -5,6 +5,7 @@
  * under x402 payment constraints. Ensures deterministic execution ticket generation,
  * dynamic budget fallback, and strict SLA latency adherence.
  */
+import { keccak256, toHex } from 'viem';
 
 export type ComputeTier = 'nano' | 'balanced' | 'reasoning' | 'deep-inference';
 
@@ -104,7 +105,11 @@ export function estimateTierCost(
   promptTokens: number,
   maxCompletionTokens: number
 ): { totalCostUnits: bigint; baseCostUnits: bigint; tokenCostUnits: bigint } {
-  const totalTokens = BigInt(Math.max(0, promptTokens + maxCompletionTokens));
+  if (!Number.isSafeInteger(promptTokens) || !Number.isSafeInteger(maxCompletionTokens) ||
+      promptTokens < 0 || maxCompletionTokens < 0 || spec.baseCostUnits < 0n || spec.tokenRatePer1kUnits < 0n) {
+    throw new Error('Token counts and tier prices must be nonnegative integers');
+  }
+  const totalTokens = BigInt(promptTokens) + BigInt(maxCompletionTokens);
   const tokenCostUnits = (totalTokens * spec.tokenRatePer1kUnits + 999n) / 1000n;
   const totalCostUnits = spec.baseCostUnits + tokenCostUnits;
   return {
@@ -124,19 +129,8 @@ export function computeExecutionTicketHash(
   model: string,
   costUnits: bigint
 ): string {
-  const input = `${requestId}:${payer.toLowerCase()}:${tier}:${model}:${costUnits.toString()}`;
-  let h1 = 0xdeadbeef ^ input.length;
-  let h2 = 0x41c6ce57 ^ input.length;
-  for (let i = 0; i < input.length; i++) {
-    const ch = input.charCodeAt(i);
-    h1 = Math.imul(h1 ^ ch, 2654435761);
-    h2 = Math.imul(h2 ^ ch, 1597334677);
-  }
-  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
-  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
-  const part1 = (h1 >>> 0).toString(16).padStart(8, '0');
-  const part2 = (h2 >>> 0).toString(16).padStart(8, '0');
-  return `0xtkt_${part1}${part2}`;
+  // A content commitment, not an authorization or proof of payment.
+  return keccak256(toHex(JSON.stringify([requestId, payer.toLowerCase(), tier, model, costUnits.toString()])));
 }
 
 /**
@@ -161,7 +155,8 @@ export function routeComputeRequest(
     };
   }
 
-  if (request.promptTokens <= 0 || request.maxCompletionTokens < 0) {
+  if (!Number.isSafeInteger(request.promptTokens) || !Number.isSafeInteger(request.maxCompletionTokens) ||
+      request.promptTokens <= 0 || request.maxCompletionTokens < 0) {
     return {
       requestId: request.requestId,
       isRoutable: false,
@@ -171,6 +166,33 @@ export function routeComputeRequest(
       estimatedLatencyMs: 0,
       fallbackTriggered: false,
       rejectionReason: 'Prompt tokens must be > 0 and completion tokens >= 0',
+    };
+  }
+
+  if (request.network === 'eip155:2366') {
+    return {
+      requestId: request.requestId,
+      isRoutable: false,
+      estimatedCostUnits: 0n,
+      baseCostUnits: 0n,
+      tokenCostUnits: 0n,
+      estimatedLatencyMs: 0,
+      fallbackTriggered: false,
+      rejectionReason: 'Mainnet USDC.e pricing requires a separate six-decimal tier table',
+    };
+  }
+
+  if (request.maxAllowedLatencyMs !== undefined &&
+      (!Number.isSafeInteger(request.maxAllowedLatencyMs) || request.maxAllowedLatencyMs <= 0)) {
+    return {
+      requestId: request.requestId,
+      isRoutable: false,
+      estimatedCostUnits: 0n,
+      baseCostUnits: 0n,
+      tokenCostUnits: 0n,
+      estimatedLatencyMs: 0,
+      fallbackTriggered: false,
+      rejectionReason: 'SLA latency limit must be a positive integer',
     };
   }
 
@@ -225,7 +247,7 @@ export function routeComputeRequest(
     }
 
     // Check latency constraint if specified
-    if (request.maxAllowedLatencyMs && spec.p95LatencyMs > request.maxAllowedLatencyMs) {
+    if (request.maxAllowedLatencyMs !== undefined && spec.p95LatencyMs > request.maxAllowedLatencyMs) {
       continue;
     }
 

@@ -4,7 +4,7 @@
 
 In multi-agent systems and LLM workflows, autonomous agents frequently execute repetitive inference queries (e.g. market updates, code evaluations, weather forecasts, translation). Under conventional x402 gateways, every invocation incurs full model compute cost and standard on-chain micropayment settlement ($0.001 - $0.010).
 
-The **Semantic Cache Oracle** (`SemanticCacheOracle`) provides a cryptographically verifiable caching layer that offers up to **80% - 95% price discounts** for cache hits while delivering near-instant response latency and verifiable proof of authenticity.
+The **Semantic Cache Oracle** (`SemanticCacheOracle`) is a local cache prototype that calculates discounts for cache hits. It does not host a gateway or settle x402 payments. An authenticated discount proof requires a server-held HMAC key and verification with the same trusted key; an oracle instantiated without a key produces no valid proof.
 
 ---
 
@@ -61,7 +61,7 @@ interface CacheHitProof {
   proofSignature: string;
 }
 ```
-The client can independently verify `proofSignature` against `validUntil` and `responseDigest` without contacting external oracles.
+The verifier must possess the trusted HMAC key and check that the proof's cache generation is still active. `verifyProof` fails closed without an active-entry check; `verifyIssuedProof` performs both checks against the local oracle. A client without the key cannot independently authenticate the discount, and the key must never be exposed to the browser. Distributed services need shared revocation state.
 
 ---
 

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { SemanticCacheOracle } from '../src/lib/semantic-cache-oracle.ts';
+import crypto from 'node:crypto';
 
 const providerA = '0x1111111111111111111111111111111111111111';
 const providerB = '0x2222222222222222222222222222222222222222';
@@ -86,7 +87,7 @@ test('lookup returns NOT_FOUND for unknown prompt or provider', () => {
 });
 
 test('lookup returns CACHE_HIT with 80% discount and accurate effective price', () => {
-  const oracle = new SemanticCacheOracle();
+  const oracle = new SemanticCacheOracle('trusted-oracle-key');
   const prompt = 'Estimate gas price on Kite testnet';
   const responsePayload = JSON.stringify({ gwei: 1.5, fast: 2.0 });
 
@@ -107,8 +108,63 @@ test('lookup returns CACHE_HIT with 80% discount and accurate effective price', 
   assert.equal(res.proof.discountBps, 8000);
 
   // Verify cryptographic proof
-  const isValid = SemanticCacheOracle.verifyProof(res.proof);
+  const isValid = SemanticCacheOracle.verifyProof(res.proof, Math.floor(Date.now() / 1000), 'trusted-oracle-key', () => true);
   assert.equal(isValid, true);
+});
+
+test('public fields cannot be forged into a discount proof without the trusted key', () => {
+  const oracle = new SemanticCacheOracle('trusted-oracle-key');
+  oracle.register({ prompt: 'price', responsePayload: 'answer', provider: providerA, basePriceUsd: 1 });
+  const proof = oracle.lookup('price', providerA).proof!;
+  const forged = { ...proof, effectivePriceUsd: 0.000001 };
+  const publicPayload = `${forged.cacheKey}:${forged.promptHash}:${forged.responseDigest}:${forged.provider}:${forged.effectivePriceUsd}:${forged.validUntil}`;
+  forged.proofSignature = crypto.createHash('sha256').update(publicPayload).digest('hex');
+  assert.equal(SemanticCacheOracle.verifyProof(forged, Math.floor(Date.now() / 1000), 'trusted-oracle-key', () => true), false);
+  assert.equal(SemanticCacheOracle.verifyProof(proof), false);
+});
+
+test('cache normalizes provider identity when registering and looking up', () => {
+  const oracle = new SemanticCacheOracle();
+  oracle.register({ prompt: 'price', responsePayload: 'answer', provider: providerA.toUpperCase(), basePriceUsd: 1 });
+  assert.equal(oracle.lookup('price', providerA).hit, true);
+});
+
+test('a positive discounted price never rounds down to zero', () => {
+  const oracle = new SemanticCacheOracle();
+  oracle.register({ prompt: 'tiny', responsePayload: 'answer', provider: providerA, basePriceUsd: 0.000001, discountBps: 9500 });
+  const result = oracle.lookup('tiny', providerA);
+  assert.ok((result.effectivePriceUsd ?? 0) > 0);
+});
+
+test('returned cache records cannot change stored pricing', () => {
+  const oracle = new SemanticCacheOracle('trusted-oracle-key');
+  const registered = oracle.register({ prompt: 'immutable', responsePayload: 'answer', provider: providerA, basePriceUsd: 1, discountBps: 0 });
+  registered.discountBps = 9500;
+  const first = oracle.lookup('immutable', providerA);
+  assert.equal(first.effectivePriceUsd, 1);
+  first.entry!.discountBps = 9500;
+  assert.equal(oracle.lookup('immutable', providerA).effectivePriceUsd, 1);
+});
+
+test('revoked cache entries cannot keep authorizing old discount proofs', () => {
+  const oracle = new SemanticCacheOracle('trusted-oracle-key');
+  const entry = oracle.register({ prompt: 'revoke', responsePayload: 'answer', provider: providerA, basePriceUsd: 1 });
+  const proof = oracle.lookup('revoke', providerA).proof!;
+  const now = Math.floor(Date.now() / 1000);
+  assert.equal(oracle.verifyIssuedProof(proof, now), true);
+  assert.equal(SemanticCacheOracle.verifyProof(proof, now, 'trusted-oracle-key'), false);
+  oracle.invalidate(entry.cacheKey);
+  assert.equal(SemanticCacheOracle.verifyProof(proof, now, 'trusted-oracle-key', () => false), false);
+  assert.equal(oracle.verifyIssuedProof(proof, now), false);
+});
+
+test('discount basis points are authenticated by the cache proof', () => {
+  const oracle = new SemanticCacheOracle('trusted-oracle-key');
+  oracle.register({ prompt: 'bps', responsePayload: 'answer', provider: providerA, basePriceUsd: 1, discountBps: 5000 });
+  const proof = oracle.lookup('bps', providerA).proof!;
+  const now = Math.floor(Date.now() / 1000);
+  assert.equal(SemanticCacheOracle.verifyProof(proof, now, 'trusted-oracle-key', () => true), true);
+  assert.equal(SemanticCacheOracle.verifyProof({ ...proof, discountBps: 9500 }, now, 'trusted-oracle-key', () => true), false);
 });
 
 test('expired cache entry returns EXPIRED and does not grant discount', () => {
@@ -131,7 +187,7 @@ test('expired cache entry returns EXPIRED and does not grant discount', () => {
 });
 
 test('verifyProof fails if expired or tampered', () => {
-  const oracle = new SemanticCacheOracle();
+  const oracle = new SemanticCacheOracle('trusted-oracle-key');
   const prompt = 'Deterministic proof check';
 
   oracle.register({
@@ -147,11 +203,11 @@ test('verifyProof fails if expired or tampered', () => {
 
   // Tampered price
   const tamperedProof = { ...res.proof, effectivePriceUsd: 0.0001 };
-  assert.equal(SemanticCacheOracle.verifyProof(tamperedProof), false);
+  assert.equal(SemanticCacheOracle.verifyProof(tamperedProof, Math.floor(Date.now() / 1000), 'trusted-oracle-key', () => true), false);
 
   // Expired proof
   const expiredTime = res.proof.validUntil + 10;
-  assert.equal(SemanticCacheOracle.verifyProof(res.proof, expiredTime), false);
+  assert.equal(SemanticCacheOracle.verifyProof(res.proof, expiredTime, 'trusted-oracle-key', () => true), false);
 });
 
 test('invalidate and invalidateByProvider purge entries and update metrics', () => {

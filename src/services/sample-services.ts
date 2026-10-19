@@ -777,13 +777,12 @@ export const INITIAL_SERVICES: ServiceManifest[] = [
     schema: 1,
     name: 'kite-semantic-cache-gateway',
     display_name: 'Agent Semantic Cache & Discount Gateway',
-    description: 'High-speed distributed prompt response cache providing up to 80% micropayment discounts on verified AI inference cache hits.',
+    description: 'Local prototype of a prompt response cache and conditional discount proof; no hosted gateway is provided.',
     maintainer: {
       github: 'unripebranc',
       contact: 'unripebranc@users.noreply.github.com',
     },
-    status: 'testnet',
-    base_url: 'https://cache.sandbox.gokite.ai',
+    status: 'draft',
     network: 'eip155:2368',
     pay_to: '0x8888888888888888888888888888888888888888',
     upstream: {
@@ -791,14 +790,14 @@ export const INITIAL_SERVICES: ServiceManifest[] = [
       url: 'https://cache-engine.internal.kite.ai',
       requires_api_key: false,
     },
-    categories: ['ai', 'infrastructure'],
+    categories: ['ai', 'other'],
     tags: ['semantic-cache', 'inference-discount', 'prompt-cache', 'llm-optimization', 'x402'],
     source: 'typescript-express',
     endpoints: [
       {
         method: 'POST',
         path: '/v1/cache/lookup',
-        summary: 'Query semantic prompt cache; returns hit proof with 80% discount on cache hits or routes to cold model inference.',
+        summary: 'Prototype lookup and conditional discount calculation; requires a trusted HMAC key for proof verification.',
         price_usd: '0.0002',
         example_request: {
           body: {
@@ -810,7 +809,7 @@ export const INITIAL_SERVICES: ServiceManifest[] = [
       {
         method: 'POST',
         path: '/v1/cache/register',
-        summary: 'Store newly inferred agent response into semantic cache with cryptographic origin signature.',
+        summary: 'Store a local response cache entry; an authenticated origin proof requires a trusted HMAC key.',
         price_usd: '0.001',
         example_request: {
           body: {
@@ -826,13 +825,12 @@ export const INITIAL_SERVICES: ServiceManifest[] = [
     schema: 1,
     name: 'kite-compute-router',
     display_name: 'Kite AI Multi-Tier Compute Router',
-    description: 'Dynamic model selection and compute tier routing engine for autonomous agents under x402 micropayments.',
+    description: 'Local compute-tier selection prototype with testnet unit estimates; no model execution or payment endpoint is deployed.',
     maintainer: {
       github: 'gokite-ai',
       contact: 'compute@gokite.ai',
     },
-    status: 'testnet',
-    base_url: 'https://compute.sandbox.gokite.ai',
+    status: 'draft',
     network: 'eip155:2368',
     pay_to: '0x4444444444444444444444444444444444444444',
     upstream: {
@@ -862,11 +860,11 @@ export const INITIAL_SERVICES: ServiceManifest[] = [
       {
         method: 'POST',
         path: '/v1/compute/ticket-verify',
-        summary: 'Verify execution ticket hash and deterministic budget commitment.',
+        summary: 'Recompute a local execution-ticket content hash; this is not an authenticated payment or execution proof.',
         price_usd: '0.00005',
         example_request: {
           body: {
-            ticket_hash: '0xtkt_deadbeef41c6ce57',
+            ticket_hash: '0x' + '0'.repeat(64),
             request_id: 'req_8923a1',
           },
         },
@@ -877,13 +875,12 @@ export const INITIAL_SERVICES: ServiceManifest[] = [
     schema: 1,
     name: 'kite-data-attestation-oracle',
     display_name: 'Kite Data Attestation & Provenance Anchor',
-    description: 'Cryptographic dataset provenance verification, Merkle proof auditing, and quality tier rating for AI training data pipelines.',
+    description: 'Local dataset attestation prototype with Merkle inclusion checks; trusted anchoring and provider verification are external requirements.',
     maintainer: {
       github: 'gokite-ai',
       contact: 'data-oracle@gokite.ai',
     },
-    status: 'testnet',
-    base_url: 'https://data-provenance.sandbox.gokite.ai',
+    status: 'draft',
     network: 'eip155:2368',
     pay_to: '0x5555555555555555555555555555555555555555',
     upstream: {
@@ -898,7 +895,7 @@ export const INITIAL_SERVICES: ServiceManifest[] = [
       {
         method: 'POST',
         path: '/v1/data/attest',
-        summary: 'Submit and anchor dataset attestation record with Merkle root and quality score.',
+        summary: 'Evaluate a dataset record only after a trusted external attestation verifier accepts it; no anchor is submitted here.',
         price_usd: '0.0005',
         example_request: {
           body: {
@@ -930,13 +927,12 @@ export const INITIAL_SERVICES: ServiceManifest[] = [
     schema: 1,
     name: 'kite-session-allowance-manager',
     display_name: 'Kite Delegated Session Allowance Oracle',
-    description: 'Scoped micropayment allowance grants and sub-agent authorization auditing for autonomous agent swarms.',
+    description: 'Local session-allowance bookkeeping prototype; no on-chain grant or payment authorization is performed.',
     maintainer: {
       github: 'gokite-ai',
       contact: 'session-oracle@gokite.ai',
     },
-    status: 'testnet',
-    base_url: 'https://allowance.sandbox.gokite.ai',
+    status: 'draft',
     network: 'eip155:2368',
     pay_to: '0x6666666666666666666666666666666666666666',
     upstream: {
@@ -951,7 +947,7 @@ export const INITIAL_SERVICES: ServiceManifest[] = [
       {
         method: 'POST',
         path: '/v1/allowance/grant',
-        summary: 'Grant a bounded session budget to an authorized worker agent.',
+        summary: 'Create a local budget record; trusted grant authentication is required before any spend approval.',
         price_usd: '0.0002',
         example_request: {
           body: {
@@ -966,7 +962,7 @@ export const INITIAL_SERVICES: ServiceManifest[] = [
       {
         method: 'POST',
         path: '/v1/allowance/verify-spend',
-        summary: 'Verify spend authorization and return remaining session balance.',
+        summary: 'Evaluate a delegate spend with external grant and request verification, then update the local balance.',
         price_usd: '0.00005',
         example_request: {
           body: {

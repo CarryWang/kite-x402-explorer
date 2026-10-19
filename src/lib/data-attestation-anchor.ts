@@ -1,4 +1,5 @@
 import type { Hex } from 'viem';
+import { concatHex, keccak256 } from 'viem';
 
 /**
  * Data Attestation Anchor & Cryptographic Provenance Oracle for Kite Chain.
@@ -39,18 +40,8 @@ export function isValidBytes32(hex: string): boolean {
  * Computes deterministic dual-hash for Merkle pair nodes.
  */
 export function hashPair(left: Hex, right: Hex): Hex {
-  const combined = left.toLowerCase() + right.toLowerCase().slice(2);
-  let h1 = 0x55555555 ^ combined.length;
-  let h2 = 0xaaaaaaaa ^ combined.length;
-  for (let i = 0; i < combined.length; i++) {
-    const ch = combined.charCodeAt(i);
-    h1 = Math.imul(h1 ^ ch, 16777619);
-    h2 = Math.imul(h2 ^ ch, 2166136261);
-  }
-  const hex1 = (h1 >>> 0).toString(16).padStart(8, '0');
-  const hex2 = (h2 >>> 0).toString(16).padStart(8, '0');
-  const repeated = `${hex1}${hex2}`.repeat(4);
-  return `0x${repeated}` as Hex;
+  if (!isValidBytes32(left) || !isValidBytes32(right)) throw new Error('Merkle nodes must be bytes32');
+  return keccak256(concatHex([left, right]));
 }
 
 /**
@@ -62,7 +53,8 @@ export function verifyMerkleInclusion(
   expectedRoot: Hex,
   leafIndex: number
 ): boolean {
-  if (!isValidBytes32(leaf) || !isValidBytes32(expectedRoot)) {
+  if (!isValidBytes32(leaf) || !isValidBytes32(expectedRoot) || !Number.isSafeInteger(leafIndex) || leafIndex < 0 ||
+      proof.length > 256 || (proof.length < 53 && leafIndex >= 2 ** proof.length)) {
     return false;
   }
 
@@ -88,7 +80,8 @@ export function verifyMerkleInclusion(
  */
 export function evaluateDataAttestation(
   record: DataAttestationRecord,
-  baseFeeUnits: bigint = 500_000_000_000_000n // 0.0005 pieUSD
+  baseFeeUnits: bigint = 500_000_000_000_000n, // 0.0005 pieUSD
+  verifyTrustedAttestation?: (record: DataAttestationRecord) => boolean
 ): AttestationVerificationResult {
   if (!record.datasetId || record.datasetId.trim().length === 0) {
     return {
@@ -123,6 +116,17 @@ export function evaluateDataAttestation(
     };
   }
 
+  if (!isValidBytes32(record.attestationNonce) || baseFeeUnits <= 0n) {
+    return {
+      isValid: false,
+      datasetId: record.datasetId,
+      computedFeeUnits: 0n,
+      qualityTier: 'unverified',
+      isEligibleForDispute: false,
+      rejectionReason: 'Attestation nonce and positive base fee are required',
+    };
+  }
+
   if (record.recordCount <= 0 || !Number.isInteger(record.recordCount)) {
     return {
       isValid: false,
@@ -146,6 +150,25 @@ export function evaluateDataAttestation(
       qualityTier: 'unverified',
       isEligibleForDispute: false,
       rejectionReason: 'Quality score must be an integer between 0 and 10,000 basis points',
+    };
+  }
+
+  // Caller-supplied scores are never enough to unlock a discount. The verifier
+  // must check an authenticated provider attestation and a trusted anchor.
+  let verified = false;
+  try {
+    verified = verifyTrustedAttestation?.(record) === true;
+  } catch {
+    verified = false;
+  }
+  if (!verified) {
+    return {
+      isValid: false,
+      datasetId: record.datasetId,
+      computedFeeUnits: 0n,
+      qualityTier: 'unverified',
+      isEligibleForDispute: false,
+      rejectionReason: 'Trusted attestation verification is required before pricing',
     };
   }
 

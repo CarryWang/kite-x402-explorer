@@ -4,7 +4,7 @@
 
 In multi-agent architectures (such as autonomous research swarms, pipeline coordinators, and sentinel bots), human principals or master coordinator agents delegate execution authority to specialized worker agents. Granting raw private keys with unlimited wallet balances presents catastrophic financial risk.
 
-The `SessionAllowanceManager` allows master accounts to authorize time-bound, budget-capped sub-allowances for worker agents under the x402 payment framework.
+The session-allowance helper maintains a local budget record. It does not create an on-chain grant or transfer funds. Spend approval fails closed unless the caller supplies trusted grant and delegate-request verifiers; distributed deployments must persist budget updates atomically.
 
 ---
 

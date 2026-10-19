@@ -1,4 +1,4 @@
-import type { Hex } from 'viem';
+import { keccak256, toHex, type Hex } from 'viem';
 
 /**
  * Delegated Session Allowance & Agent Sub-Account Manager for Kite Chain.
@@ -22,6 +22,7 @@ export interface DelegatedAllowanceConfig {
 
 export interface SessionSpendRequest {
   sessionId: string;
+  delegateAgent: `0x${string}`;
   amountUnits: bigint;
   recipient: `0x${string}`;
   timestamp: number;
@@ -33,6 +34,15 @@ export interface SessionVerificationResult {
   remainingUnits: bigint;
   rejectionReason?: string;
   receiptHash?: Hex;
+}
+
+export interface SessionAuthorizationPolicy {
+  /** Verify the grant against trusted storage or a grant signature. */
+  verifyGrant: (allowance: DelegatedAllowanceConfig) => boolean;
+  /** Authenticate the delegate's spend request using trusted external state. */
+  verifySpend: (allowance: DelegatedAllowanceConfig, spend: SessionSpendRequest) => boolean;
+  /** Server-controlled clock; defaults to the current Unix time. */
+  currentTimestamp?: number;
 }
 
 /**
@@ -51,17 +61,8 @@ export function hashSpendReceipt(
   recipient: string,
   timestamp: number
 ): Hex {
-  const input = `${sessionId}:${amount.toString()}:${recipient.toLowerCase()}:${timestamp}`;
-  let h1 = 0x12345678 ^ input.length;
-  let h2 = 0x87654321 ^ input.length;
-  for (let i = 0; i < input.length; i++) {
-    const ch = input.charCodeAt(i);
-    h1 = Math.imul(h1 ^ ch, 0x5bd1e995);
-    h2 = Math.imul(h2 ^ ch, 0x27d4eb2f);
-  }
-  const hex1 = (h1 >>> 0).toString(16).padStart(8, '0');
-  const hex2 = (h2 >>> 0).toString(16).padStart(8, '0');
-  return `0xrcpt_${hex1}${hex2}` as Hex;
+  // Content fingerprint only; possession of this hash does not prove a payment.
+  return keccak256(toHex(JSON.stringify([sessionId, amount.toString(), recipient.toLowerCase(), timestamp])));
 }
 
 /**
@@ -122,8 +123,45 @@ export function createSessionAllowance(
  */
 export function authorizeSessionSpend(
   allowance: DelegatedAllowanceConfig,
-  spend: SessionSpendRequest
+  spend: SessionSpendRequest,
+  policy?: SessionAuthorizationPolicy
 ): SessionVerificationResult {
+  const now = policy?.currentTimestamp ?? Math.floor(Date.now() / 1000);
+  let trusted = false;
+  try {
+    trusted = policy !== undefined && Number.isSafeInteger(now) &&
+      policy.verifyGrant(allowance) === true && policy.verifySpend(allowance, spend) === true;
+  } catch {
+    trusted = false;
+  }
+  if (!trusted) {
+    return {
+      isAuthorized: false,
+      sessionId: allowance.sessionId,
+      remainingUnits: allowance.totalAllowanceUnits - allowance.spentUnits,
+      rejectionReason: 'Trusted grant and delegate-spend verification is required',
+    };
+  }
+
+  if (spend.sessionId !== allowance.sessionId ||
+      !isValidAddress(spend.delegateAgent) ||
+      spend.delegateAgent.toLowerCase() !== allowance.delegateAgent.toLowerCase()) {
+    return {
+      isAuthorized: false,
+      sessionId: allowance.sessionId,
+      remainingUnits: allowance.totalAllowanceUnits - allowance.spentUnits,
+      rejectionReason: 'Session ID or delegate agent does not match this allowance',
+    };
+  }
+
+  if (allowance.spentUnits < 0n || allowance.spentUnits > allowance.totalAllowanceUnits) {
+    return {
+      isAuthorized: false,
+      sessionId: allowance.sessionId,
+      remainingUnits: 0n,
+      rejectionReason: 'Allowance spent balance is invalid',
+    };
+  }
   if (allowance.isRevoked) {
     return {
       isAuthorized: false,
@@ -142,7 +180,7 @@ export function authorizeSessionSpend(
     };
   }
 
-  if (spend.timestamp < allowance.validAfter) {
+  if (now < allowance.validAfter) {
     return {
       isAuthorized: false,
       sessionId: allowance.sessionId,
@@ -151,7 +189,7 @@ export function authorizeSessionSpend(
     };
   }
 
-  if (spend.timestamp > allowance.validBefore) {
+  if (now > allowance.validBefore) {
     return {
       isAuthorized: false,
       sessionId: allowance.sessionId,
@@ -169,7 +207,7 @@ export function authorizeSessionSpend(
     };
   }
 
-  if (allowance.allowedRecipients && allowance.allowedRecipients.length > 0) {
+  if (allowance.allowedRecipients !== undefined) {
     const isAllowed = allowance.allowedRecipients.some(
       (r) => r.toLowerCase() === spend.recipient.toLowerCase()
     );
@@ -197,8 +235,13 @@ export function authorizeSessionSpend(
     allowance.sessionId,
     spend.amountUnits,
     spend.recipient,
-    spend.timestamp
+    now
   );
+
+  // Synchronously consume the shared record so sequential approvals cannot
+  // reuse the same remaining balance. Distributed callers must persist this
+  // update atomically; this local helper does not grant on-chain authority.
+  allowance.spentUnits += spend.amountUnits;
 
   return {
     isAuthorized: true,

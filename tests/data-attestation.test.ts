@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { Hex } from 'viem';
+import { concatHex, keccak256 } from 'viem';
 import {
   evaluateDataAttestation,
   verifyMerkleInclusion,
@@ -24,7 +25,7 @@ test('valid attestation evaluation with sovereign tier discount (>= 95%)', () =>
     attestationNonce: mockNonce,
   };
 
-  const result = evaluateDataAttestation(record);
+  const result = evaluateDataAttestation(record, 500_000_000_000_000n, () => true);
   assert.equal(result.isValid, true);
   assert.equal(result.qualityTier, 'sovereign');
   assert.equal(result.isEligibleForDispute, false);
@@ -44,7 +45,7 @@ test('valid attestation evaluation with gold tier discount (>= 80%)', () => {
     attestationNonce: mockNonce,
   };
 
-  const result = evaluateDataAttestation(record);
+  const result = evaluateDataAttestation(record, 500_000_000_000_000n, () => true);
   assert.equal(result.isValid, true);
   assert.equal(result.qualityTier, 'gold');
   assert.equal(result.isEligibleForDispute, true);
@@ -130,6 +131,7 @@ test('Merkle inclusion proof verification succeeds with valid path', () => {
   const leaf1 = '0x1111111111111111111111111111111111111111111111111111111111111111' as Hex;
   const leaf2 = '0x2222222222222222222222222222222222222222222222222222222222222222' as Hex;
   const root = hashPair(leaf1, leaf2);
+  assert.equal(root, keccak256(concatHex([leaf1, leaf2])));
 
   // leaf1 is at index 0, sibling is leaf2
   const verified1 = verifyMerkleInclusion(leaf1, [leaf2], root, 0);
@@ -143,4 +145,17 @@ test('Merkle inclusion proof verification succeeds with valid path', () => {
   const tamperedLeaf = '0x9999999999999999999999999999999999999999999999999999999999999999' as Hex;
   const verifiedTampered = verifyMerkleInclusion(tamperedLeaf, [leaf2], root, 0);
   assert.equal(verifiedTampered, false);
+  assert.equal(verifyMerkleInclusion(leaf1, [leaf2], root, -1), false);
+  assert.equal(verifyMerkleInclusion(leaf1, [leaf2], root, 2), false);
+});
+
+test('self-reported quality cannot unlock a fee discount without trusted verification', () => {
+  const record: DataAttestationRecord = {
+    datasetId: 'unverified', provider: mockProvider, contentMerkleRoot: mockRoot,
+    recordCount: 100, qualityScoreBps: 10000, schemaVersion: '1.0.0',
+    timestamp: Date.now(), attestationNonce: mockNonce,
+  };
+  const result = evaluateDataAttestation(record);
+  assert.equal(result.isValid, false);
+  assert.equal(result.computedFeeUnits, 0n);
 });

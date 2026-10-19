@@ -7,7 +7,7 @@ Decentralized AI workflows require tamper-proof guarantees about training corpor
 2. Individual items or inference embeddings are proven members of the dataset via Merkle inclusion paths.
 3. The dataset quality score meets the agreed SLA standards before funds are settled.
 
-The `DataAttestationAnchor` provides an on-chain/x402-integrated verification mechanism for dataset anchoring, proof evaluation, and tiered fee settlement.
+The `DataAttestationAnchor` is a local prototype. Merkle inclusion is checked against a caller-supplied root, which must be authenticated from an external trusted anchor. Quality discounts remain disabled unless a trusted attestation verifier is provided. This repository does not anchor data, sign settlement receipts, or settle x402 payments for this feature.
 
 ---
 
@@ -31,6 +31,6 @@ Datasets with audited high-quality annotations receive volume-scaled discounts t
 2. **Inclusion Proof Audit**:
    - Evaluates sibling hashes along the Merkle tree path from the target chunk leaf to the published root.
    - Rejects corrupted leaves, altered sibling hashes, or mismatched tree depth.
-3. **Escrow / SLA Settlement**:
-   - Integrates with x402 payment requirements. If proof verification passes, settlement receipt is signed and returned.
-   - If an attestation is challenged or found fraudulent, downstream dispute arbiters can slash the provider's bond.
+3. **External settlement requirement**:
+   - A production service must authenticate the root and quality score and implement its own x402 settlement.
+   - Bond slashing and dispute enforcement are outside this local helper.

@@ -6,7 +6,7 @@ In autonomous multi-agent networks operating on the Kite Blockchain, agents dyna
 - **Fast, high-throughput tasks** (e.g., entity extraction, telemetry scoring, translation) prioritize ultra-low latency (<150ms) and low micro-costs.
 - **Complex orchestration tasks** (e.g., recursive code synthesis, multi-hop reasoning, formal verification) require Chain-of-Thought reasoning engines with higher token capacities.
 
-The `ComputeTierRouter` provides a deterministic, SLA-aware routing layer that matches an incoming agent request against standardized compute tiers, enforcing budget constraints and issuing verifiable cryptographic execution tickets.
+The `ComputeTierRouter` is a local routing and testnet cost-estimation prototype. It does not invoke a model, reserve budget, or settle payments. Its execution ticket is a cryptographic content hash, not a signed authorization.
 
 ---
 
@@ -32,4 +32,4 @@ The `ComputeTierRouter` provides a deterministic, SLA-aware routing layer that m
 4. **Dynamic Cost Calculation**:
    $$\text{Total Cost} = \text{Base Cost} + \left\lceil \frac{(\text{Prompt Tokens} + \text{Completion Tokens}) \times \text{Token Rate}}{1000} \right\rceil$$
 5. **Fallback Degradation**: If an agent requests a preferred tier (e.g. `reasoning`) but their maximum allocated budget is insufficient, the router attempts graceful degradation to compatible lower tiers (e.g. `balanced`).
-6. **Execution Ticket Issuance**: When a route is approved, the engine computes a deterministic execution ticket hash (`0xtkt_<hash>`) linking the request ID, payer address, selected model, and committed payment units.
+6. **Execution Ticket Hash**: When a route is selected, the engine computes a deterministic 32-byte hash (`0x` plus 64 hex characters) linking the request ID, payer address, selected model, and estimated cost. This does not prove execution or payment.

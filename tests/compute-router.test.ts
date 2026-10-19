@@ -26,7 +26,7 @@ test('nano tier selection for small prompt within lightweight budget', () => {
   assert.equal(decision.modelIdentifier, 'kite-nano-v1');
   assert.equal(decision.fallbackTriggered, false);
   assert.ok(decision.estimatedCostUnits <= req.maxBudgetUnits);
-  assert.ok(decision.executionTicketHash?.startsWith('0xtkt_'));
+  assert.match(decision.executionTicketHash ?? '', /^0x[0-9a-f]{64}$/);
 });
 
 test('reasoning tier selection when requireReasoning is requested and budget suffices', () => {
@@ -129,7 +129,28 @@ test('deterministic execution ticket hash generation', () => {
 
   assert.equal(hash1, hash2);
   assert.notEqual(hash1, hash3);
-  assert.match(hash1, /^0xtkt_[0-9a-f]{16}$/);
+  assert.match(hash1, /^0x[0-9a-f]{64}$/);
+});
+
+test('router rejects fractional tokens and unconfigured mainnet unit pricing', () => {
+  const base: ComputeRoutingRequest = {
+    requestId: 'req', payer: mockPayer, promptTokens: 100, maxCompletionTokens: 10,
+    maxBudgetUnits: 1_000_000_000_000_000n,
+  };
+  assert.equal(routeComputeRequest({ ...base, promptTokens: 1.5 }).isRoutable, false);
+  assert.equal(routeComputeRequest({ ...base, network: 'eip155:2366' }).isRoutable, false);
+});
+
+test('zero or negative SLA limits are rejected', () => {
+  const base: ComputeRoutingRequest = {
+    requestId: 'req_latency', payer: mockPayer, promptTokens: 100, maxCompletionTokens: 10,
+    maxBudgetUnits: 1_000_000_000_000_000n,
+  };
+  for (const maxAllowedLatencyMs of [0, -1]) {
+    const result = routeComputeRequest({ ...base, maxAllowedLatencyMs });
+    assert.equal(result.isRoutable, false);
+    assert.match(result.rejectionReason ?? '', /latency/i);
+  }
 });
 
 test('cost estimation calculates base plus token rate with ceil rounding', () => {

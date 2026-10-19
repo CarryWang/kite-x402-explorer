@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 
 export interface CacheEntry {
   cacheKey: string;
+  generationId: string;
   promptHash: string;
   topic: string;
   responsePayload: string;
@@ -26,6 +27,7 @@ export interface CacheLookupResult {
 
 export interface CacheHitProof {
   cacheKey: string;
+  generationId: string;
   promptHash: string;
   responseDigest: string;
   provider: string;
@@ -52,10 +54,18 @@ export interface CacheRegisterParams {
   basePriceUsd: number;
   discountBps?: number; // default 8000 (80%)
   ttlSeconds?: number;  // default 3600 (1 hour)
-  signingKey?: string;
+}
+
+function proofPayload(proof: CacheHitProof): string {
+  return JSON.stringify([
+    proof.cacheKey, proof.generationId, proof.promptHash, proof.responseDigest,
+    proof.provider, proof.effectivePriceUsd, proof.discountBps, proof.validUntil,
+  ]);
 }
 
 export class SemanticCacheOracle {
+  constructor(private readonly signingKey?: string) {}
+
   private entries = new Map<string, CacheEntry>();
   private totalLookups = 0;
   private totalHits = 0;
@@ -84,35 +94,37 @@ export class SemanticCacheOracle {
     if (!params.prompt || params.prompt.trim().length === 0) {
       throw new Error('Prompt cannot be empty');
     }
-    if (params.basePriceUsd <= 0) {
+    if (!Number.isFinite(params.basePriceUsd) || params.basePriceUsd <= 0) {
       throw new Error('Base price must be greater than zero');
     }
 
     const discountBps = params.discountBps ?? 8000;
-    if (discountBps < 0 || discountBps > 9500) {
+    if (!Number.isInteger(discountBps) || discountBps < 0 || discountBps > 9500) {
       throw new Error(`Discount BPS must be between 0 and 9500 (received ${discountBps})`);
     }
 
     const ttl = params.ttlSeconds ?? 3600;
-    if (ttl <= 0) {
+    if (!Number.isSafeInteger(ttl) || ttl <= 0) {
       throw new Error('TTL must be greater than zero');
     }
 
     const promptHash = SemanticCacheOracle.hashPrompt(params.prompt);
     const responseDigest = SemanticCacheOracle.digestPayload(params.responsePayload);
     const now = Math.floor(Date.now() / 1000);
+    const provider = params.provider.toLowerCase();
     const cacheKey = crypto
       .createHash('sha256')
-      .update(`${params.provider}:${promptHash}`)
+      .update(`${provider}:${promptHash}`)
       .digest('hex');
 
     const entry: CacheEntry = {
       cacheKey,
+      generationId: crypto.randomUUID(),
       promptHash,
       topic: params.topic || 'general',
       responsePayload: params.responsePayload,
       responseDigest,
-      provider: params.provider.toLowerCase(),
+      provider,
       cachedAt: now,
       expiresAt: now + ttl,
       basePriceUsd: params.basePriceUsd,
@@ -122,7 +134,7 @@ export class SemanticCacheOracle {
     };
 
     this.entries.set(cacheKey, entry);
-    return entry;
+    return { ...entry };
   }
 
   /**
@@ -156,18 +168,17 @@ export class SemanticCacheOracle {
     this.totalHits++;
     entry.hitCount++;
 
-    const discountFactor = entry.discountBps / 10000;
-    const savingsUsd = Number((entry.basePriceUsd * discountFactor).toFixed(6));
-    const effectivePriceUsd = Number((entry.basePriceUsd - savingsUsd).toFixed(6));
+    const effectivePriceUsd = Number((entry.basePriceUsd * (10000 - entry.discountBps) / 10000).toPrecision(15));
+    const savingsUsd = Number((entry.basePriceUsd - effectivePriceUsd).toPrecision(15));
 
-    entry.totalSavingsUsd = Number((entry.totalSavingsUsd + savingsUsd).toFixed(6));
-    this.totalUsdSaved = Number((this.totalUsdSaved + savingsUsd).toFixed(6));
+    entry.totalSavingsUsd += savingsUsd;
+    this.totalUsdSaved += savingsUsd;
 
     const proof = this.generateProof(entry, effectivePriceUsd);
 
     return {
       hit: true,
-      entry,
+      entry: { ...entry },
       effectivePriceUsd,
       savingsUsd,
       proof,
@@ -178,31 +189,51 @@ export class SemanticCacheOracle {
    * Generates a signed cryptographic proof of cache hit.
    */
   private generateProof(entry: CacheEntry, effectivePriceUsd: number): CacheHitProof {
-    const payload = `${entry.cacheKey}:${entry.promptHash}:${entry.responseDigest}:${entry.provider}:${effectivePriceUsd}:${entry.expiresAt}`;
-    const proofSignature = crypto.createHash('sha256').update(payload).digest('hex');
-
-    return {
+    const proof: CacheHitProof = {
       cacheKey: entry.cacheKey,
+      generationId: entry.generationId,
       promptHash: entry.promptHash,
       responseDigest: entry.responseDigest,
       provider: entry.provider,
       effectivePriceUsd,
       discountBps: entry.discountBps,
       validUntil: entry.expiresAt,
-      proofSignature,
+      proofSignature: '',
     };
+    // Without a trusted secret, the cache can still be queried locally, but its
+    // output cannot be presented as an authenticated discount entitlement.
+    if (this.signingKey) {
+      proof.proofSignature = crypto.createHmac('sha256', this.signingKey).update(proofPayload(proof)).digest('hex');
+    }
+    return proof;
   }
 
   /**
    * Validates a cache hit proof.
    */
-  public static verifyProof(proof: CacheHitProof, now: number = Math.floor(Date.now() / 1000)): boolean {
-    if (now >= proof.validUntil) {
+  public static verifyProof(
+    proof: CacheHitProof,
+    now: number = Math.floor(Date.now() / 1000),
+    trustedSigningKey?: string,
+    isActive?: (proof: CacheHitProof) => boolean
+  ): boolean {
+    if (!trustedSigningKey || !isActive || now >= proof.validUntil || !/^[0-9a-f]{64}$/i.test(proof.proofSignature)) {
       return false;
     }
-    const expectedPayload = `${proof.cacheKey}:${proof.promptHash}:${proof.responseDigest}:${proof.provider}:${proof.effectivePriceUsd}:${proof.validUntil}`;
-    const expectedSig = crypto.createHash('sha256').update(expectedPayload).digest('hex');
-    return proof.proofSignature === expectedSig;
+    try {
+      if (!isActive(proof)) return false;
+    } catch {
+      return false;
+    }
+    const expectedSig = crypto.createHmac('sha256', trustedSigningKey).update(proofPayload(proof)).digest();
+    return crypto.timingSafeEqual(Buffer.from(proof.proofSignature, 'hex'), expectedSig);
+  }
+
+  /** Verify both authentication and current cache membership after revocation. */
+  public verifyIssuedProof(proof: CacheHitProof, now: number = Math.floor(Date.now() / 1000)): boolean {
+    return SemanticCacheOracle.verifyProof(proof, now, this.signingKey, (candidate) =>
+      this.entries.get(candidate.cacheKey)?.generationId === candidate.generationId
+    );
   }
 
   /**
