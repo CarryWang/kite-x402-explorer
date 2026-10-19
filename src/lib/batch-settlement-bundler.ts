@@ -59,13 +59,13 @@ export interface ReceiptInclusionProof {
  * Computes deterministic cryptographic hash for an individual x402 payment receipt.
  */
 export function hashReceipt(receipt: BundledReceipt): `0x${string}` {
-  if (!isAddress(receipt.payer)) {
+  if (!isAddress(receipt.payer, { strict: false })) {
     throw new Error(`Invalid payer address: ${receipt.payer}`);
   }
-  if (!isAddress(receipt.recipient)) {
+  if (!isAddress(receipt.recipient, { strict: false })) {
     throw new Error(`Invalid recipient address: ${receipt.recipient}`);
   }
-  if (!isAddress(receipt.tokenAddress)) {
+  if (!isAddress(receipt.tokenAddress, { strict: false })) {
     throw new Error(`Invalid token contract address: ${receipt.tokenAddress}`);
   }
   if (receipt.amount <= 0n) {
@@ -263,7 +263,7 @@ export function createSettlementBundle(params: {
   if (!bundleId || bundleId.trim().length === 0) {
     throw new Error('Bundle ID must be a non-empty string');
   }
-  if (!isAddress(tokenAddress)) {
+  if (!isAddress(tokenAddress, { strict: false })) {
     throw new Error(`Invalid bundle token address: ${tokenAddress}`);
   }
   if (!receipts || receipts.length === 0) {
