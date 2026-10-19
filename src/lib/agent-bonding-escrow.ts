@@ -137,3 +137,119 @@ export function calculateBondTier(bond: AgentBondRecord): BondTierInfo {
     creditMultiplier: 0.5,
   };
 }
+
+/**
+ * Locks a portion of the agent's available stake against an in-progress compute task.
+ */
+export function lockTaskCapacity(
+  bond: AgentBondRecord,
+  requiredWei: bigint,
+  now = Date.now()
+): AgentBondRecord {
+  if (bond.status !== 'active') {
+    throw new Error(`Cannot lock capacity on agent bond with status '${bond.status}'`);
+  }
+  if (requiredWei <= 0n) {
+    throw new Error('Task allocation requirement must be strictly positive');
+  }
+
+  const available = bond.stakedAmountWei - bond.activeLockedWei;
+  if (available < requiredWei) {
+    throw new Error(
+      `Insufficient available stake: required ${requiredWei.toString()} wei, but only ${available.toString()} wei available`
+    );
+  }
+
+  return {
+    ...bond,
+    activeLockedWei: bond.activeLockedWei + requiredWei,
+    lastActivityAt: now,
+  };
+}
+
+/**
+ * Releases locked task capacity and updates reputation score based on task outcome.
+ */
+export function releaseTaskCapacity(
+  bond: AgentBondRecord,
+  releasedWei: bigint,
+  success: boolean,
+  now = Date.now()
+): AgentBondRecord {
+  if (releasedWei <= 0n) {
+    throw new Error('Released allocation amount must be strictly positive');
+  }
+  if (releasedWei > bond.activeLockedWei) {
+    throw new Error(
+      `Cannot release ${releasedWei.toString()} wei exceeding active locked amount ${bond.activeLockedWei.toString()} wei`
+    );
+  }
+
+  let newReputation = bond.reputationScore;
+  if (success) {
+    newReputation = Math.min(1000, newReputation + 5);
+  } else {
+    newReputation = Math.max(0, newReputation - 25);
+  }
+
+  return {
+    ...bond,
+    activeLockedWei: bond.activeLockedWei - releasedWei,
+    reputationScore: newReputation,
+    lastActivityAt: now,
+  };
+}
+
+/**
+ * Executes a punitive bond slash following an adjudicated protocol violation.
+ */
+export function slashBond(
+  bond: AgentBondRecord,
+  slashBps: number,
+  beneficiary: `0x${string}`,
+  reason: SlashReason,
+  evidenceHash: `0x${string}`,
+  now = Date.now()
+): { updatedBond: AgentBondRecord; slashEvent: SlashEvent } {
+  if (bond.status !== 'active' && bond.status !== 'unbonding') {
+    throw new Error(`Cannot slash bond with terminal status '${bond.status}'`);
+  }
+  if (!isAddress(beneficiary, { strict: false })) {
+    throw new Error(`Invalid beneficiary address: ${beneficiary}`);
+  }
+  if (slashBps <= 0 || slashBps > 10000) {
+    throw new Error(`Slash basis points must be between 1 and 10000, received ${slashBps}`);
+  }
+  if (!evidenceHash.startsWith('0x') || evidenceHash.length !== 66) {
+    throw new Error(`Invalid 32-byte cryptographic evidence hash: ${evidenceHash}`);
+  }
+
+  const slashFraction = (bond.stakedAmountWei * BigInt(slashBps)) / 10000n;
+  const slashedWei = slashFraction > 0n ? slashFraction : 1n;
+  const remainingStake = bond.stakedAmountWei > slashedWei ? bond.stakedAmountWei - slashedWei : 0n;
+
+  const slashEvent: SlashEvent = {
+    slashId: `slash-${keccak256(stringToHex(`${bond.bondId}:${evidenceHash}:${now}`)).slice(2, 14)}`,
+    bondId: bond.bondId,
+    slashedWei,
+    beneficiary,
+    reason,
+    evidenceHash,
+    timestamp: now,
+  };
+
+  const newStatus: BondStatus =
+    remainingStake < MIN_BOND_AMOUNT_WEI ? 'slashed' : bond.status;
+
+  const updatedBond: AgentBondRecord = {
+    ...bond,
+    stakedAmountWei: remainingStake,
+    activeLockedWei: 0n, // Cancel any active allocations on catastrophic slash
+    reputationScore: Math.max(0, bond.reputationScore - Math.floor(slashBps / 20)),
+    status: newStatus,
+    lastActivityAt: now,
+  };
+
+  return { updatedBond, slashEvent };
+}
+
