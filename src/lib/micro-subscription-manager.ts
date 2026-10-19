@@ -175,3 +175,193 @@ export function createSubscription(
     delegatedAuthSignature: options?.delegatedAuthSignature,
   };
 }
+
+/**
+ * Records usage consumption against an active subscription.
+ *
+ * Verifies period active status, checks remaining spend cap, applies overage rates
+ * once included units are exhausted, and records the spend increment.
+ */
+export function recordSubscriptionUsage(
+  subscription: SubscriptionRecord,
+  plan: SubscriptionPlan,
+  units: number,
+  currentTimestamp?: number
+): {
+  approved: boolean;
+  chargeWei: bigint;
+  remainingSpendCapWei: bigint;
+  rejectionReason?: string;
+} {
+  const now = currentTimestamp ?? Date.now();
+
+  if (subscription.status !== 'active') {
+    return {
+      approved: false,
+      chargeWei: 0n,
+      remainingSpendCapWei: plan.maxSpendCapWei - subscription.periodSpendWei,
+      rejectionReason: `Subscription is not active (current status: ${subscription.status})`,
+    };
+  }
+
+  if (now < subscription.currentPeriodStart || now > subscription.currentPeriodEnd) {
+    return {
+      approved: false,
+      chargeWei: 0n,
+      remainingSpendCapWei: plan.maxSpendCapWei - subscription.periodSpendWei,
+      rejectionReason: 'Usage timestamp is outside current subscription billing window',
+    };
+  }
+
+  if (units <= 0 || !Number.isInteger(units)) {
+    return {
+      approved: false,
+      chargeWei: 0n,
+      remainingSpendCapWei: plan.maxSpendCapWei - subscription.periodSpendWei,
+      rejectionReason: 'Units requested must be a strictly positive integer',
+    };
+  }
+
+  // Calculate billable overage units
+  const previouslyConsumed = subscription.periodUnitsConsumed;
+  const newTotalUnits = previouslyConsumed + units;
+
+  let billableOverageUnits = 0;
+  if (previouslyConsumed >= plan.includedUnits) {
+    billableOverageUnits = units;
+  } else if (newTotalUnits > plan.includedUnits) {
+    billableOverageUnits = newTotalUnits - plan.includedUnits;
+  }
+
+  const additionalCostWei = BigInt(billableOverageUnits) * plan.overageUnitPriceWei;
+  const projectedSpendWei = subscription.periodSpendWei + additionalCostWei;
+
+  if (projectedSpendWei > plan.maxSpendCapWei) {
+    return {
+      approved: false,
+      chargeWei: 0n,
+      remainingSpendCapWei: plan.maxSpendCapWei - subscription.periodSpendWei,
+      rejectionReason: `Spend would exceed maximum spend cap of ${plan.maxSpendCapWei} wei (projected: ${projectedSpendWei} wei)`,
+    };
+  }
+
+  // Apply state update
+  subscription.periodUnitsConsumed = newTotalUnits;
+  subscription.periodSpendWei = projectedSpendWei;
+
+  return {
+    approved: true,
+    chargeWei: additionalCostWei,
+    remainingSpendCapWei: plan.maxSpendCapWei - projectedSpendWei,
+  };
+}
+
+/**
+ * Transitions an active subscription to paused state.
+ */
+export function pauseSubscription(subscription: SubscriptionRecord): SubscriptionRecord {
+  if (subscription.status !== 'active') {
+    throw new Error(`Cannot pause subscription from '${subscription.status}' state`);
+  }
+  return {
+    ...subscription,
+    status: 'paused',
+  };
+}
+
+/**
+ * Resumes a paused subscription.
+ */
+export function resumeSubscription(
+  subscription: SubscriptionRecord,
+  currentTimestamp?: number
+): SubscriptionRecord {
+  if (subscription.status !== 'paused') {
+    throw new Error(`Cannot resume subscription from '${subscription.status}' state`);
+  }
+  const now = currentTimestamp ?? Date.now();
+  if (now > subscription.currentPeriodEnd) {
+    return {
+      ...subscription,
+      status: 'expired',
+    };
+  }
+  return {
+    ...subscription,
+    status: 'active',
+  };
+}
+
+/**
+ * Cancels a subscription immediately, stopping all auto-renewals and future spends.
+ */
+export function cancelSubscription(subscription: SubscriptionRecord): SubscriptionRecord {
+  if (subscription.status === 'cancelled') {
+    throw new Error('Subscription is already cancelled');
+  }
+  return {
+    ...subscription,
+    status: 'cancelled',
+    autoRenew: false,
+  };
+}
+
+/**
+ * Calculates a fair pro-rated refund if a subscription is cancelled or terminated mid-period.
+ */
+export function calculateProratedRefund(
+  subscription: SubscriptionRecord,
+  plan: SubscriptionPlan,
+  currentTimestamp?: number
+): bigint {
+  if (plan.baseCostWei === 0n) return 0n;
+
+  const now = currentTimestamp ?? Date.now();
+  if (now <= subscription.currentPeriodStart) {
+    return plan.baseCostWei;
+  }
+  if (now >= subscription.currentPeriodEnd) {
+    return 0n;
+  }
+
+  const elapsedMs = now - subscription.currentPeriodStart;
+  const totalPeriodMs = subscription.currentPeriodEnd - subscription.currentPeriodStart;
+  const remainingFraction = 1 - elapsedMs / totalPeriodMs;
+
+  const refund = BigInt(Math.floor(Number(plan.baseCostWei) * remainingFraction));
+  return refund > 0n ? refund : 0n;
+}
+
+/**
+ * Computes real-time telemetry snapshot and summary for the subscription.
+ */
+export function getSubscriptionSummary(
+  subscription: SubscriptionRecord,
+  plan: SubscriptionPlan,
+  currentTimestamp?: number
+): SubscriptionSummary {
+  const now = currentTimestamp ?? Date.now();
+  const remainingSpendCapWei = plan.maxSpendCapWei > subscription.periodSpendWei
+    ? plan.maxSpendCapWei - subscription.periodSpendWei
+    : 0n;
+
+  const remainingIncludedUnits = plan.includedUnits > subscription.periodUnitsConsumed
+    ? plan.includedUnits - subscription.periodUnitsConsumed
+    : 0;
+
+  const effectiveUsageRate = plan.includedUnits > 0
+    ? Math.min(1.0, subscription.periodUnitsConsumed / plan.includedUnits)
+    : 1.0;
+
+  return {
+    subscriptionId: subscription.subscriptionId,
+    planTitle: plan.title,
+    status: subscription.status,
+    remainingSpendCapWei,
+    remainingIncludedUnits,
+    effectiveUsageRate,
+    nextRenewalTime: subscription.currentPeriodEnd,
+    isRenewalDue: now >= subscription.currentPeriodEnd && subscription.status === 'active',
+  };
+}
+
