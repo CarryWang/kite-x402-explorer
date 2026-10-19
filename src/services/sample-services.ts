@@ -926,4 +926,56 @@ export const INITIAL_SERVICES: ServiceManifest[] = [
       },
     ],
   },
+  {
+    schema: 1,
+    name: 'kite-session-allowance-manager',
+    display_name: 'Kite Delegated Session Allowance Oracle',
+    description: 'Scoped micropayment allowance grants and sub-agent authorization auditing for autonomous agent swarms.',
+    maintainer: {
+      github: 'gokite-ai',
+      contact: 'session-oracle@gokite.ai',
+    },
+    status: 'testnet',
+    base_url: 'https://allowance.sandbox.gokite.ai',
+    network: 'eip155:2368',
+    pay_to: '0x6666666666666666666666666666666666666666',
+    upstream: {
+      name: 'Kite Session Authority Network',
+      url: 'https://session.internal.gokite.ai',
+      requires_api_key: false,
+    },
+    categories: ['finance', 'ai'],
+    tags: ['allowance', 'sub-agent', 'session-key', 'budget-guard', 'x402'],
+    source: 'typescript-express',
+    endpoints: [
+      {
+        method: 'POST',
+        path: '/v1/allowance/grant',
+        summary: 'Grant a bounded session budget to an authorized worker agent.',
+        price_usd: '0.0002',
+        example_request: {
+          body: {
+            session_id: 'sess_agent_worker_42',
+            granter: '0x7aB6f3ed87C42eF0aDb67Ed95090f8bF5240149e',
+            delegate_agent: '0x6666666666666666666666666666666666666666',
+            total_allowance_wei: '1000000000000000000',
+            valid_duration_seconds: 3600,
+          },
+        },
+      },
+      {
+        method: 'POST',
+        path: '/v1/allowance/verify-spend',
+        summary: 'Verify spend authorization and return remaining session balance.',
+        price_usd: '0.00005',
+        example_request: {
+          body: {
+            session_id: 'sess_agent_worker_42',
+            amount_wei: '500000000000000',
+            recipient: '0x1111111111111111111111111111111111111111',
+          },
+        },
+      },
+    ],
+  },
 ];
