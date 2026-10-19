@@ -53,6 +53,13 @@ export interface FeeQuote {
   quoteDigest: `0x${string}`;
 }
 
+export const PRIORITY_TIP_BPS: Record<PriorityTier, number> = {
+  economy: 0,
+  standard: 50, // 0.5%
+  expedited: 200, // 2.0%
+  flash: 500, // 5.0%
+};
+
 export interface DynamicFeeMarketOracle {
   readonly config: MarketConfig;
   registerProvider(
@@ -61,6 +68,16 @@ export interface DynamicFeeMarketOracle {
     initialBaseFeeUnits?: bigint,
     currentTimestamp?: number
   ): ProviderMarketState;
+  updateUtilization(
+    providerAddress: `0x${string}`,
+    activeRequests: number,
+    currentTimestamp?: number
+  ): ProviderMarketState;
+  calculatePriorityTip(baseFeeUnits: bigint, tier: PriorityTier): bigint;
+  generateQuote(
+    request: FeeQuoteRequest,
+    currentTimestamp?: number
+  ): FeeQuote;
   getMarketState(providerAddress: `0x${string}`): ProviderMarketState | undefined;
   getAllMarkets(): ProviderMarketState[];
 }
@@ -74,6 +91,7 @@ export function createMarketOracle(
   };
 
   const providers = new Map<string, ProviderMarketState>();
+  let quoteCounter = 0;
 
   function normalizeAddress(addr: string): `0x${string}` {
     const trimmed = addr.trim().toLowerCase();
@@ -115,6 +133,104 @@ export function createMarketOracle(
     return { ...state };
   }
 
+  function updateUtilization(
+    providerAddress: `0x${string}`,
+    activeRequests: number,
+    currentTimestamp?: number
+  ): ProviderMarketState {
+    const normalized = normalizeAddress(providerAddress);
+    const state = providers.get(normalized);
+    if (!state) {
+      throw new Error(`Provider not registered: ${providerAddress}`);
+    }
+    if (!Number.isSafeInteger(activeRequests) || activeRequests < 0) {
+      throw new Error(`activeRequests must be non-negative integer, got ${activeRequests}`);
+    }
+
+    const now = currentTimestamp ?? Math.floor(Date.now() / 1000);
+    const rawRatio = activeRequests / state.capacityLimit;
+    const utilizationRatio = Math.min(rawRatio, 2.0);
+
+    const alpha = 0.3;
+    const emaUtilization = alpha * utilizationRatio + (1 - alpha) * state.emaUtilization;
+
+    let newBaseFee = state.currentBaseFeeUnits;
+    const diff = utilizationRatio - config.targetUtilizationRatio;
+    if (diff !== 0) {
+      const deltaBps = Math.min(
+        Math.round((Math.abs(diff) / config.targetUtilizationRatio) * config.maxAdjustmentBps),
+        config.maxAdjustmentBps
+      );
+      const adjustment = (state.currentBaseFeeUnits * BigInt(deltaBps)) / 10000n;
+      const effectiveAdjustment = adjustment > 0n ? adjustment : 1n;
+
+      if (diff > 0) {
+        newBaseFee = state.currentBaseFeeUnits + effectiveAdjustment;
+        if (newBaseFee > config.maxBaseFeeUnits) {
+          newBaseFee = config.maxBaseFeeUnits;
+        }
+      } else {
+        if (state.currentBaseFeeUnits > effectiveAdjustment + config.minBaseFeeUnits) {
+          newBaseFee = state.currentBaseFeeUnits - effectiveAdjustment;
+        } else {
+          newBaseFee = config.minBaseFeeUnits;
+        }
+      }
+    }
+
+    state.activeRequests = activeRequests;
+    state.utilizationRatio = utilizationRatio;
+    state.emaUtilization = emaUtilization;
+    state.currentBaseFeeUnits = newBaseFee;
+    state.lastUpdatedTimestamp = now;
+
+    return { ...state };
+  }
+
+  function calculatePriorityTip(baseFeeUnits: bigint, tier: PriorityTier): bigint {
+    const tipBps = PRIORITY_TIP_BPS[tier] ?? 0;
+    if (tipBps === 0) return 0n;
+    return (baseFeeUnits * BigInt(tipBps)) / 10000n;
+  }
+
+  function generateQuote(
+    request: FeeQuoteRequest,
+    currentTimestamp?: number
+  ): FeeQuote {
+    const normalizedProvider = normalizeAddress(request.providerAddress);
+    const normalizedClient = normalizeAddress(request.clientAddress);
+
+    const state = providers.get(normalizedProvider);
+    if (!state) {
+      throw new Error(`Provider not registered: ${request.providerAddress}`);
+    }
+
+    const now = currentTimestamp ?? Math.floor(Date.now() / 1000);
+    const expiresAt = now + config.quoteTtlSeconds;
+
+    quoteCounter += 1;
+    state.totalQuotesIssued += 1;
+
+    const baseFeeUnits = state.currentBaseFeeUnits;
+    const priorityTipUnits = calculatePriorityTip(baseFeeUnits, request.priorityTier);
+    const totalFeeUnits = baseFeeUnits + priorityTipUnits;
+
+    const quoteId = `quote_${now}_${quoteCounter}`;
+
+    return {
+      quoteId,
+      providerAddress: normalizedProvider,
+      clientAddress: normalizedClient,
+      priorityTier: request.priorityTier,
+      baseFeeUnits,
+      priorityTipUnits,
+      totalFeeUnits,
+      issuedAtTimestamp: now,
+      expiresAtTimestamp: expiresAt,
+      quoteDigest: '0x0000000000000000000000000000000000000000000000000000000000000000',
+    };
+  }
+
   function getMarketState(providerAddress: `0x${string}`): ProviderMarketState | undefined {
     const normalized = normalizeAddress(providerAddress);
     const state = providers.get(normalized);
@@ -128,6 +244,9 @@ export function createMarketOracle(
   return {
     config,
     registerProvider,
+    updateUtilization,
+    calculatePriorityTip,
+    generateQuote,
     getMarketState,
     getAllMarkets,
   };
