@@ -120,3 +120,199 @@ export function computeReceiptMerkleRoot(receiptHashes: `0x${string}`[]): `0x${s
 
   return layer[0];
 }
+
+/**
+ * Calculates net debit/credit balance for each participating agent across all receipts.
+ */
+export function calculateNetBalances(receipts: BundledReceipt[]): Map<string, NetBalanceSummary> {
+  const summaries = new Map<string, NetBalanceSummary>();
+
+  for (const receipt of receipts) {
+    const payerKey = receipt.payer.toLowerCase();
+    const recipientKey = receipt.recipient.toLowerCase();
+
+    // Initialize payer entry if missing
+    if (!summaries.has(payerKey)) {
+      summaries.set(payerKey, {
+        agent: receipt.payer,
+        tokenAddress: receipt.tokenAddress,
+        netAmount: 0n,
+        totalSent: 0n,
+        totalReceived: 0n,
+      });
+    }
+
+    // Initialize recipient entry if missing
+    if (!summaries.has(recipientKey)) {
+      summaries.set(recipientKey, {
+        agent: receipt.recipient,
+        tokenAddress: receipt.tokenAddress,
+        netAmount: 0n,
+        totalSent: 0n,
+        totalReceived: 0n,
+      });
+    }
+
+    const payer = summaries.get(payerKey)!;
+    payer.netAmount -= receipt.amount;
+    payer.totalSent += receipt.amount;
+
+    const recipient = summaries.get(recipientKey)!;
+    recipient.netAmount += receipt.amount;
+    recipient.totalReceived += receipt.amount;
+  }
+
+  return summaries;
+}
+
+/**
+ * Resolves net debit/credit balances into a minimal set of bilateral on-chain transfers.
+ * Uses a greedy matching algorithm between debtors and creditors.
+ */
+export function resolveBilateralNetTransfers(
+  netBalances: Map<string, NetBalanceSummary>
+): BilateralNetTransfer[] {
+  const debtors: { agent: `0x${string}`; balance: bigint }[] = [];
+  const creditors: { agent: `0x${string}`; balance: bigint }[] = [];
+
+  for (const summary of netBalances.values()) {
+    if (summary.netAmount < 0n) {
+      debtors.push({ agent: summary.agent, balance: -summary.netAmount });
+    } else if (summary.netAmount > 0n) {
+      creditors.push({ agent: summary.agent, balance: summary.netAmount });
+    }
+  }
+
+  debtors.sort((a, b) => (b.balance > a.balance ? 1 : b.balance < a.balance ? -1 : 0));
+  creditors.sort((a, b) => (b.balance > a.balance ? 1 : b.balance < a.balance ? -1 : 0));
+
+  const transfers: BilateralNetTransfer[] = [];
+  let dIdx = 0;
+  let cIdx = 0;
+
+  while (dIdx < debtors.length && cIdx < creditors.length) {
+    const debtor = debtors[dIdx];
+    const creditor = creditors[cIdx];
+
+    const transferAmount = debtor.balance < creditor.balance ? debtor.balance : creditor.balance;
+    if (transferAmount > 0n) {
+      transfers.push({
+        payer: debtor.agent,
+        recipient: creditor.agent,
+        amount: transferAmount,
+      });
+    }
+
+    debtor.balance -= transferAmount;
+    creditor.balance -= transferAmount;
+
+    if (debtor.balance === 0n) dIdx++;
+    if (creditor.balance === 0n) cIdx++;
+  }
+
+  return transfers;
+}
+
+/**
+ * Calculates estimated gas overhead reduction by aggregating receipts into a single batch.
+ */
+export function computeAmortizedGasSavings(
+  receiptCount: number,
+  netTransferCount: number,
+  baseTxGas: bigint = 21000n,
+  perTransferGas: bigint = 65000n
+): GasSavingsEstimate {
+  // Individual execution: each receipt requires a distinct standard on-chain transfer
+  const individualTxEstimatedGas = BigInt(receiptCount) * (baseTxGas + perTransferGas);
+
+  // Bundled execution: single transaction overhead + batched transfer calls + Merkle root commitment
+  const merkleRootCommitGas = 20000n;
+  const bundledTxEstimatedGas =
+    baseTxGas + merkleRootCommitGas + BigInt(netTransferCount) * (perTransferGas / 2n + 5000n);
+
+  const gasSavedWei =
+    individualTxEstimatedGas > bundledTxEstimatedGas
+      ? individualTxEstimatedGas - bundledTxEstimatedGas
+      : 0n;
+
+  const savingsPercentage =
+    individualTxEstimatedGas > 0n
+      ? Number((gasSavedWei * 10000n) / individualTxEstimatedGas) / 100
+      : 0;
+
+  return {
+    individualTxEstimatedGas,
+    bundledTxEstimatedGas,
+    gasSavedWei,
+    savingsPercentage,
+  };
+}
+
+/**
+ * Creates and validates an aggregated settlement bundle from individual x402 payment receipts.
+ */
+export function createSettlementBundle(params: {
+  bundleId: string;
+  receipts: BundledReceipt[];
+  tokenAddress: `0x${string}`;
+  baseTxGas?: bigint;
+  perTransferGas?: bigint;
+}): SettlementBundle {
+  const { bundleId, receipts, tokenAddress, baseTxGas, perTransferGas } = params;
+
+  if (!bundleId || bundleId.trim().length === 0) {
+    throw new Error('Bundle ID must be a non-empty string');
+  }
+  if (!isAddress(tokenAddress)) {
+    throw new Error(`Invalid bundle token address: ${tokenAddress}`);
+  }
+  if (!receipts || receipts.length === 0) {
+    throw new Error('Cannot create an empty settlement bundle');
+  }
+
+  const seenNonces = new Set<string>();
+  let totalVolume = 0n;
+  const receiptHashes: `0x${string}`[] = [];
+
+  for (const receipt of receipts) {
+    if (receipt.tokenAddress.toLowerCase() !== tokenAddress.toLowerCase()) {
+      throw new Error(
+        `Token mismatch: receipt ${receipt.receiptId} has token ${receipt.tokenAddress}, expected ${tokenAddress}`
+      );
+    }
+
+    const nonceKey = `${receipt.payer.toLowerCase()}:${receipt.nonce.toLowerCase()}`;
+    if (seenNonces.has(nonceKey)) {
+      throw new Error(`Duplicate nonce detected within bundle: ${receipt.nonce} for ${receipt.payer}`);
+    }
+    seenNonces.add(nonceKey);
+
+    const hash = hashReceipt(receipt);
+    receiptHashes.push(hash);
+    totalVolume += receipt.amount;
+  }
+
+  const merkleRoot = computeReceiptMerkleRoot(receiptHashes);
+  const netBalances = calculateNetBalances(receipts);
+  const netTransfers = resolveBilateralNetTransfers(netBalances);
+  const gasSavings = computeAmortizedGasSavings(
+    receipts.length,
+    netTransfers.length,
+    baseTxGas,
+    perTransferGas
+  );
+
+  return {
+    bundleId,
+    tokenAddress,
+    receipts: [...receipts],
+    receiptCount: receipts.length,
+    totalVolume,
+    merkleRoot,
+    netTransfers,
+    gasSavings,
+    status: 'pending',
+    createdAt: Date.now(),
+  };
+}
+
