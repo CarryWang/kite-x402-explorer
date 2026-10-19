@@ -822,4 +822,55 @@ export const INITIAL_SERVICES: ServiceManifest[] = [
       },
     ],
   },
+  {
+    schema: 1,
+    name: 'kite-compute-router',
+    display_name: 'Kite AI Multi-Tier Compute Router',
+    description: 'Dynamic model selection and compute tier routing engine for autonomous agents under x402 micropayments.',
+    maintainer: {
+      github: 'gokite-ai',
+      contact: 'compute@gokite.ai',
+    },
+    status: 'testnet',
+    base_url: 'https://compute.sandbox.gokite.ai',
+    network: 'eip155:2368',
+    pay_to: '0x4444444444444444444444444444444444444444',
+    upstream: {
+      name: 'Kite Compute Fabric',
+      url: 'https://fabric.internal.gokite.ai',
+      requires_api_key: false,
+    },
+    categories: ['ai', 'data'],
+    tags: ['compute', 'llm-router', 'tier-allocation', 'reasoning', 'x402'],
+    source: 'typescript-express',
+    endpoints: [
+      {
+        method: 'POST',
+        path: '/v1/compute/route',
+        summary: 'Evaluate token requirements and budget to select optimal compute tier (nano, balanced, reasoning, deep-inference).',
+        price_usd: '0.0001',
+        example_request: {
+          body: {
+            request_id: 'req_8923a1',
+            prompt_tokens: 1500,
+            max_completion_tokens: 500,
+            max_budget_wei: '2000000000000000',
+            require_reasoning: false,
+          },
+        },
+      },
+      {
+        method: 'POST',
+        path: '/v1/compute/ticket-verify',
+        summary: 'Verify execution ticket hash and deterministic budget commitment.',
+        price_usd: '0.00005',
+        example_request: {
+          body: {
+            ticket_hash: '0xtkt_deadbeef41c6ce57',
+            request_id: 'req_8923a1',
+          },
+        },
+      },
+    ],
+  },
 ];
