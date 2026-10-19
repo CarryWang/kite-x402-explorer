@@ -710,4 +710,68 @@ export const INITIAL_SERVICES: ServiceManifest[] = [
       },
     ],
   },
+  {
+    schema: 1,
+    name: 'kite-agent-sla-oracle',
+    display_name: 'AI Agent SLA Oracle & Slashing Guard',
+    description: 'Decentralized service level agreement monitor tracking agent heartbeats, response latencies, and triggering automated security bond slashing.',
+    maintainer: {
+      github: 'normalluggage',
+      contact: 'sla-oracle@gokite.ai',
+    },
+    status: 'testnet',
+    base_url: 'https://sla.sandbox.gokite.ai',
+    network: 'eip155:2368',
+    pay_to: '0x8888888888888888888888888888888888888888',
+    upstream: {
+      name: 'Kite SLA Oracle Consensus Engine',
+      url: 'https://sla-engine.internal.gokite.ai',
+      requires_api_key: false,
+    },
+    categories: ['ai', 'data'],
+    tags: ['sla', 'oracle', 'slashing', 'uptime', 'x402'],
+    source: 'typescript-express',
+    endpoints: [
+      {
+        method: 'POST',
+        path: '/v1/sla/heartbeat',
+        summary: 'Record cryptographically signed agent telemetry ping including latency, block number, and availability status.',
+        price_usd: '0.001',
+        example_request: {
+          body: {
+            agent_address: '0x9999999999999999999999999999999999999999',
+            service_id: 'open-meteo-weather',
+            latency_ms: 120,
+            status_code: 200,
+          },
+        },
+      },
+      {
+        method: 'POST',
+        path: '/v1/sla/claim-slashing',
+        summary: 'Claim an automated compensation rebate voucher when an invoked AI service breaches guaranteed SLA targets.',
+        price_usd: '0.002',
+        example_request: {
+          body: {
+            caller_address: '0x1234567890123456789012345678901234567890',
+            service_id: 'open-meteo-weather',
+            breached_metric: 'LATENCY_EXCEEDED',
+          },
+        },
+      },
+      {
+        method: 'GET',
+        path: '/v1/sla/metrics',
+        summary: 'Query rolling 24-hour SLA scorecard, uptime percentage, and historical slashing enforcement events.',
+        price_usd: '0.0005',
+        example_request: {
+          query: {
+            service_id: 'open-meteo-weather',
+            window_hours: '24',
+          },
+        },
+      },
+    ],
+  },
 ];
+
