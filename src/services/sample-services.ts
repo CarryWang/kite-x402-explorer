@@ -710,4 +710,53 @@ export const INITIAL_SERVICES: ServiceManifest[] = [
       },
     ],
   },
+  {
+    schema: 1,
+    name: 'kite-semantic-cache-gateway',
+    display_name: 'Agent Semantic Cache & Discount Gateway',
+    description: 'High-speed distributed prompt response cache providing up to 80% micropayment discounts on verified AI inference cache hits.',
+    maintainer: {
+      github: 'unripebranc',
+      contact: 'unripebranc@users.noreply.github.com',
+    },
+    status: 'testnet',
+    base_url: 'https://cache.sandbox.gokite.ai',
+    network: 'eip155:2368',
+    pay_to: '0x8888888888888888888888888888888888888888',
+    upstream: {
+      name: 'Semantic Cache Cluster',
+      url: 'https://cache-engine.internal.kite.ai',
+      requires_api_key: false,
+    },
+    categories: ['ai', 'infrastructure'],
+    tags: ['semantic-cache', 'inference-discount', 'prompt-cache', 'llm-optimization', 'x402'],
+    source: 'typescript-express',
+    endpoints: [
+      {
+        method: 'POST',
+        path: '/v1/cache/lookup',
+        summary: 'Query semantic prompt cache; returns hit proof with 80% discount on cache hits or routes to cold model inference.',
+        price_usd: '0.0002',
+        example_request: {
+          body: {
+            prompt: 'Summarize the latest Solana DeFi yield opportunities for autonomous trading agents.',
+            provider: '0x1111111111111111111111111111111111111111',
+          },
+        },
+      },
+      {
+        method: 'POST',
+        path: '/v1/cache/register',
+        summary: 'Store newly inferred agent response into semantic cache with cryptographic origin signature.',
+        price_usd: '0.001',
+        example_request: {
+          body: {
+            prompt: 'Summarize the latest Solana DeFi yield opportunities for autonomous trading agents.',
+            response: 'Top liquidity pools include Kamino JLP vault (18.4% APY) and Raydium SOL-USDC CLMM.',
+            ttl_seconds: 7200,
+          },
+        },
+      },
+    ],
+  },
 ];
