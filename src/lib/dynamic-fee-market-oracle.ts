@@ -1,5 +1,12 @@
+import crypto from 'node:crypto';
 
 export type PriorityTier = 'economy' | 'standard' | 'expedited' | 'flash';
+
+export interface FeeQuoteVerificationResult {
+  valid: boolean;
+  reason?: 'EXPIRED' | 'INVALID_TIMESTAMP' | 'TAMPERED_DIGEST';
+  effectiveFeeUnits?: bigint;
+}
 
 export interface MarketConfig {
   /** Target capacity utilization ratio (e.g. 0.8 for 80%) */
@@ -76,10 +83,40 @@ export interface DynamicFeeMarketOracle {
   calculatePriorityTip(baseFeeUnits: bigint, tier: PriorityTier): bigint;
   generateQuote(
     request: FeeQuoteRequest,
-    currentTimestamp?: number
+    currentTimestamp?: number,
+    signingSecret?: string
   ): FeeQuote;
+  verifyQuote(
+    quote: FeeQuote,
+    currentTimestamp?: number,
+    signingSecret?: string
+  ): FeeQuoteVerificationResult;
   getMarketState(providerAddress: `0x${string}`): ProviderMarketState | undefined;
   getAllMarkets(): ProviderMarketState[];
+}
+
+export function computeQuoteDigest(
+  quote: Omit<FeeQuote, 'quoteDigest'>,
+  signingSecret?: string
+): `0x${string}` {
+  const canonical = [
+    quote.quoteId,
+    quote.providerAddress.toLowerCase(),
+    quote.clientAddress.toLowerCase(),
+    quote.priorityTier,
+    quote.baseFeeUnits.toString(),
+    quote.priorityTipUnits.toString(),
+    quote.totalFeeUnits.toString(),
+    quote.issuedAtTimestamp.toString(),
+    quote.expiresAtTimestamp.toString(),
+  ].join(':');
+
+  if (signingSecret && signingSecret.length > 0) {
+    const hmac = crypto.createHmac('sha256', signingSecret).update(canonical).digest('hex');
+    return `0x${hmac}` as `0x${string}`;
+  }
+  const hash = crypto.createHash('sha256').update(canonical).digest('hex');
+  return `0x${hash}` as `0x${string}`;
 }
 
 export function createMarketOracle(
@@ -195,7 +232,8 @@ export function createMarketOracle(
 
   function generateQuote(
     request: FeeQuoteRequest,
-    currentTimestamp?: number
+    currentTimestamp?: number,
+    signingSecret?: string
   ): FeeQuote {
     const normalizedProvider = normalizeAddress(request.providerAddress);
     const normalizedClient = normalizeAddress(request.clientAddress);
@@ -217,7 +255,7 @@ export function createMarketOracle(
 
     const quoteId = `quote_${now}_${quoteCounter}`;
 
-    return {
+    const unsignedQuote = {
       quoteId,
       providerAddress: normalizedProvider,
       clientAddress: normalizedClient,
@@ -227,7 +265,39 @@ export function createMarketOracle(
       totalFeeUnits,
       issuedAtTimestamp: now,
       expiresAtTimestamp: expiresAt,
-      quoteDigest: '0x0000000000000000000000000000000000000000000000000000000000000000',
+    };
+
+    const quoteDigest = computeQuoteDigest(unsignedQuote, signingSecret);
+
+    return {
+      ...unsignedQuote,
+      quoteDigest,
+    };
+  }
+
+  function verifyQuote(
+    quote: FeeQuote,
+    currentTimestamp?: number,
+    signingSecret?: string
+  ): FeeQuoteVerificationResult {
+    const now = currentTimestamp ?? Math.floor(Date.now() / 1000);
+
+    if (now > quote.expiresAtTimestamp) {
+      return { valid: false, reason: 'EXPIRED' };
+    }
+
+    if (quote.issuedAtTimestamp > now + 10 || quote.issuedAtTimestamp > quote.expiresAtTimestamp) {
+      return { valid: false, reason: 'INVALID_TIMESTAMP' };
+    }
+
+    const expectedDigest = computeQuoteDigest(quote, signingSecret);
+    if (quote.quoteDigest.toLowerCase() !== expectedDigest.toLowerCase()) {
+      return { valid: false, reason: 'TAMPERED_DIGEST' };
+    }
+
+    return {
+      valid: true,
+      effectiveFeeUnits: quote.totalFeeUnits,
     };
   }
 
@@ -247,6 +317,7 @@ export function createMarketOracle(
     updateUtilization,
     calculatePriorityTip,
     generateQuote,
+    verifyQuote,
     getMarketState,
     getAllMarkets,
   };
