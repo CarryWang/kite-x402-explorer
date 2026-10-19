@@ -1,0 +1,134 @@
+
+export type PriorityTier = 'economy' | 'standard' | 'expedited' | 'flash';
+
+export interface MarketConfig {
+  /** Target capacity utilization ratio (e.g. 0.8 for 80%) */
+  targetUtilizationRatio: number;
+  /** Maximum fee adjustment basis points per update step (e.g. 1250 = 12.5%) */
+  maxAdjustmentBps: number;
+  /** Absolute minimum base fee units permitted in the market (e.g. 1000n = $0.001) */
+  minBaseFeeUnits: bigint;
+  /** Absolute maximum base fee units cap to protect callers from unbounded surge */
+  maxBaseFeeUnits: bigint;
+  /** Time-to-live for issued price quotes in seconds */
+  quoteTtlSeconds: number;
+}
+
+export const DEFAULT_MARKET_CONFIG: MarketConfig = {
+  targetUtilizationRatio: 0.8,
+  maxAdjustmentBps: 1250, // 12.5% max adjustment per block/step (similar to EIP-1559)
+  minBaseFeeUnits: 1000n, // $0.001 at 6-decimal USDC
+  maxBaseFeeUnits: 100000n, // $0.100 maximum ceiling
+  quoteTtlSeconds: 60,
+};
+
+export interface ProviderMarketState {
+  providerAddress: `0x${string}`;
+  currentBaseFeeUnits: bigint;
+  activeRequests: number;
+  capacityLimit: number;
+  utilizationRatio: number;
+  emaUtilization: number;
+  totalQuotesIssued: number;
+  lastUpdatedTimestamp: number;
+}
+
+export interface FeeQuoteRequest {
+  providerAddress: `0x${string}`;
+  clientAddress: `0x${string}`;
+  priorityTier: PriorityTier;
+  estimatedTokens?: number;
+}
+
+export interface FeeQuote {
+  quoteId: string;
+  providerAddress: `0x${string}`;
+  clientAddress: `0x${string}`;
+  priorityTier: PriorityTier;
+  baseFeeUnits: bigint;
+  priorityTipUnits: bigint;
+  totalFeeUnits: bigint;
+  issuedAtTimestamp: number;
+  expiresAtTimestamp: number;
+  quoteDigest: `0x${string}`;
+}
+
+export interface DynamicFeeMarketOracle {
+  readonly config: MarketConfig;
+  registerProvider(
+    providerAddress: `0x${string}`,
+    capacityLimit: number,
+    initialBaseFeeUnits?: bigint,
+    currentTimestamp?: number
+  ): ProviderMarketState;
+  getMarketState(providerAddress: `0x${string}`): ProviderMarketState | undefined;
+  getAllMarkets(): ProviderMarketState[];
+}
+
+export function createMarketOracle(
+  customConfig?: Partial<MarketConfig>
+): DynamicFeeMarketOracle {
+  const config: MarketConfig = {
+    ...DEFAULT_MARKET_CONFIG,
+    ...customConfig,
+  };
+
+  const providers = new Map<string, ProviderMarketState>();
+
+  function normalizeAddress(addr: string): `0x${string}` {
+    const trimmed = addr.trim().toLowerCase();
+    if (!/^0x[0-9a-f]{40}$/.test(trimmed)) {
+      throw new Error(`Invalid EVM address format: ${addr}`);
+    }
+    return trimmed as `0x${string}`;
+  }
+
+  function registerProvider(
+    providerAddress: `0x${string}`,
+    capacityLimit: number,
+    initialBaseFeeUnits?: bigint,
+    currentTimestamp?: number
+  ): ProviderMarketState {
+    const normalized = normalizeAddress(providerAddress);
+    if (!Number.isSafeInteger(capacityLimit) || capacityLimit <= 0) {
+      throw new Error(`capacityLimit must be a positive integer, got ${capacityLimit}`);
+    }
+
+    const baseFee = initialBaseFeeUnits ?? config.minBaseFeeUnits;
+    if (baseFee < config.minBaseFeeUnits || baseFee > config.maxBaseFeeUnits) {
+      throw new Error(`initialBaseFeeUnits out of bounds [${config.minBaseFeeUnits}, ${config.maxBaseFeeUnits}]`);
+    }
+
+    const now = currentTimestamp ?? Math.floor(Date.now() / 1000);
+    const state: ProviderMarketState = {
+      providerAddress: normalized,
+      currentBaseFeeUnits: baseFee,
+      activeRequests: 0,
+      capacityLimit,
+      utilizationRatio: 0,
+      emaUtilization: 0,
+      totalQuotesIssued: 0,
+      lastUpdatedTimestamp: now,
+    };
+
+    providers.set(normalized, state);
+    return { ...state };
+  }
+
+  function getMarketState(providerAddress: `0x${string}`): ProviderMarketState | undefined {
+    const normalized = normalizeAddress(providerAddress);
+    const state = providers.get(normalized);
+    return state ? { ...state } : undefined;
+  }
+
+  function getAllMarkets(): ProviderMarketState[] {
+    return Array.from(providers.values()).map((s) => ({ ...s }));
+  }
+
+  return {
+    config,
+    registerProvider,
+    getMarketState,
+    getAllMarkets,
+  };
+}
