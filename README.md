@@ -40,6 +40,12 @@ The bundled service directory and `/api/mock-x402` route are demonstration data.
 6. **Kite Testnet E2E Suite**:
    - Automated 5-stage on-chain diagnostic runner testing RPC block heights, pieUSD domain separator hashes, Facilitator status, EIP-3009 constructors, and 5xx zero-deduction safety invariants.
 
+7. **Multi-Agent Quorum Consensus Engine**:
+   - Byzantine fault-tolerant M-of-N decentralized AI inference verification.
+   - Collects signed output digests from independent agent nodes and validates cryptographic integrity.
+   - Dynamically calculates weighted micropayment rewards proportional to compute units provided by agreeing nodes, while slashing or penalizing dissenting and rogue outputs.
+   - Enforces time-locked expiration windows with automated 100% client refund guarantees if quorum cannot be achieved.
+
 ---
 
 ## 🚀 Quick Start
