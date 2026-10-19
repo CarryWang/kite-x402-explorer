@@ -202,3 +202,48 @@ To power decentralized AI model training, dataset curation networks rely on dist
 `evaluateAgentCreditLine` computes a tier from a supplied reputation score only after a caller-provided trusted verifier accepts the complete attestation. Without that verifier, it returns an unverified profile with zero credit. This repository does not include a ZK circuit, verifying key, trusted issuer, nullifier store, or on-chain credit contract.
 
 `consumeCredit` and `settleCreditDebt` update local profile values for simulation. They neither authorize real purchases nor transfer or settle tokens. A production deployment requires a trusted proof verifier, replay protection, durable ledger, and on-chain enforcement before enabling credit payments.
+
+---
+
+## 11. Decentralized Agent SLA Oracle & Automated Slashing Protocol
+
+To safeguard consumer autonomous agents against degraded or offline service providers, `AgentSLAOracle` (`src/lib/agent-sla-oracle.ts`) monitors live heartbeat pings and enforces automated collateral slashing when agreed-upon Service Level Agreements are violated.
+
+### Protocol Architecture
+
+```
++----------------+          +-------------------------+          +-----------------------+
+|  Caller Agent  |          |  Provider Agent (x402)  |          |   Agent SLA Oracle    |
++----------------+          +-------------------------+          +-----------------------+
+        |                                |                                   |
+        |  1. Invoke x402 Service        |                                   |
+        |------------------------------->|                                   |
+        |                                |  2. Telemetry Heartbeat Ping      |
+        |                                |---------------------------------->|
+        |                                |                                   | [Evaluate Rolling SLA]
+        |                                |                                   | [Uptime / Latency Check]
+        |                                |                                   |
+        |  3. Severe Latency / Failure   |                                   |
+        |<-------------------------------|                                   |
+        |                                                                    |
+        |  4. Claim SLA Breach Rebate                                        |
+        |------------------------------------------------------------------->|
+        |                                                                    | [Verify Breach Threshold]
+        |                                                                    | [Slash Provider Bond]
+        |  5. 200 OK (Issued SLARefundVoucher & Collateral Rebate Pool)      |
+        |<-------------------------------------------------------------------|
+```
+
+### Key Components
+
+1. **Heartbeat Telemetry & Rolling Window (`recordHeartbeat`, `evaluateSLAMetrics`)**:
+   - Registered agent service providers periodically broadcast signed telemetry status pings including latency in milliseconds and HTTP status codes.
+   - The SLA Oracle computes 95th percentile latency ($P_{95}$) and uptime percentages over a sliding 1,000-ping window.
+
+2. **Automated Collateral Slashing (`evaluateAndSlash`)**:
+   - When rolling uptime falls below minimum contractual targets (e.g. 99.5%) or $P_{95}$ latency breaches thresholds, the Oracle executes an automated penalty deduction against the provider's staked KITE collateral.
+   - 80% of slashed funds are routed into a caller refund pool, while 20% is allocated to protocol burn/governance reserve.
+
+3. **Caller Refund Vouchers (`issueCallerRefund`, `redeemVoucher`)**:
+   - Calling agents whose requests were impacted by degraded provider performance can submit a breach claim to receive a cryptographically redeemable `SLARefundVoucher`.
+
