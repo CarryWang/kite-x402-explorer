@@ -253,3 +253,77 @@ export function slashBond(
   return { updatedBond, slashEvent };
 }
 
+/**
+ * Initiates an unbonding cooldown window to withdraw staked bond capital.
+ */
+export function initiateUnbonding(
+  bond: AgentBondRecord,
+  unbondWei: bigint,
+  cooldownSeconds = DEFAULT_UNBONDING_COOLDOWN_SECONDS,
+  now = Date.now()
+): AgentBondRecord {
+  if (bond.status !== 'active') {
+    throw new Error(`Cannot initiate unbonding from status '${bond.status}'`);
+  }
+  if (bond.activeLockedWei > 0n) {
+    throw new Error(
+      `Cannot initiate unbonding while ${bond.activeLockedWei.toString()} wei is actively locked in compute tasks`
+    );
+  }
+  if (unbondWei <= 0n) {
+    throw new Error('Unbonding amount must be strictly positive');
+  }
+  if (unbondWei > bond.stakedAmountWei) {
+    throw new Error(
+      `Cannot unbond ${unbondWei.toString()} wei exceeding current stake ${bond.stakedAmountWei.toString()} wei`
+    );
+  }
+
+  const remainingStake = bond.stakedAmountWei - unbondWei;
+  const cooldownDeadline = now + cooldownSeconds * 1000;
+
+  return {
+    ...bond,
+    stakedAmountWei: remainingStake,
+    unbondingAmountWei: bond.unbondingAmountWei + unbondWei,
+    unbondingCooldownDeadline: cooldownDeadline,
+    status: 'unbonding',
+    lastActivityAt: now,
+  };
+}
+
+/**
+ * Finalizes unbonding withdrawal once the required time-lock cooldown period expires.
+ */
+export function finalizeWithdrawal(
+  bond: AgentBondRecord,
+  now = Date.now()
+): { updatedBond: AgentBondRecord; withdrawnWei: bigint } {
+  if (bond.status !== 'unbonding') {
+    throw new Error(`Cannot finalize withdrawal on bond with status '${bond.status}'`);
+  }
+  if (bond.unbondingCooldownDeadline === null || now < bond.unbondingCooldownDeadline) {
+    const remainingSeconds =
+      bond.unbondingCooldownDeadline !== null
+        ? Math.ceil((bond.unbondingCooldownDeadline - now) / 1000)
+        : 0;
+    throw new Error(
+      `Unbonding cooldown period has not elapsed yet. ${remainingSeconds} seconds remaining.`
+    );
+  }
+
+  const withdrawnWei = bond.unbondingAmountWei;
+  const newStatus: BondStatus = bond.stakedAmountWei === 0n ? 'withdrawn' : 'active';
+
+  const updatedBond: AgentBondRecord = {
+    ...bond,
+    unbondingAmountWei: 0n,
+    unbondingCooldownDeadline: null,
+    status: newStatus,
+    lastActivityAt: now,
+  };
+
+  return { updatedBond, withdrawnWei };
+}
+
+
