@@ -89,6 +89,15 @@ docker run -d -p 3001:3001 --name kite-explorer kite-x402-explorer
 
 Access the application at [http://localhost:3001](http://localhost:3001).
 
+The runtime installs only production dependencies and starts the locally installed
+TypeScript loader directly, so startup does not need access to the npm registry.
+After starting the container, run `npm run test:production` to verify the health
+endpoint, service registry, manifest validation, mock x402 challenge, and built SPA
+assets. Set `SMOKE_BASE_URL` if the server uses a different address or port.
+
+CI runs the tests and build, then runs these smoke checks inside the production
+Docker image with external networking disabled.
+
 ---
 
 ## ⛓️ Network Specifications
