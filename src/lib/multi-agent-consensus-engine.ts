@@ -165,3 +165,124 @@ export function submitAgentCommitment(
   };
 }
 
+/**
+ * Evaluates quorum consensus across all submitted commitments, allocates micropayments,
+ * and penalizes dissenting/faulty compute nodes.
+ */
+export function evaluateConsensus(
+  proposal: ConsensusProposal,
+  currentTimestamp: number = Math.floor(Date.now() / 1000)
+): { proposal: ConsensusProposal; result: ConsensusResult } {
+  if (proposal.status === 'consensus_reached' || proposal.status === 'consensus_failed') {
+    throw new Error(`Proposal has already been finalized with status '${proposal.status}'`);
+  }
+
+  const isExpired = currentTimestamp > proposal.deadlineTimestamp;
+  const isFull = proposal.commitments.length >= proposal.maxNodes;
+
+  if (proposal.commitments.length < proposal.minNodes && !isExpired) {
+    throw new Error(
+      `Insufficient nodes for evaluation: ${proposal.commitments.length}/${proposal.minNodes} commitments received`
+    );
+  }
+
+  // Group commitments by resultHash
+  const votes = new Map<`0x${string}`, AgentCommitment[]>();
+  for (const c of proposal.commitments) {
+    const list = votes.get(c.resultHash) ?? [];
+    list.push(c);
+    votes.set(c.resultHash, list);
+  }
+
+  // Find majority hash
+  let winningHash: `0x${string}` | undefined;
+  let winningList: AgentCommitment[] = [];
+  for (const [hash, list] of votes.entries()) {
+    if (list.length >= proposal.quorumThreshold) {
+      if (list.length > winningList.length) {
+        winningHash = hash;
+        winningList = list;
+      }
+    }
+  }
+
+  const payouts: Record<`0x${string}`, bigint> = {};
+
+  if (winningHash && winningList.length >= proposal.quorumThreshold) {
+    const agreeingNodes = winningList.map((c) => c.agentAddress);
+    const dissentingNodes = proposal.commitments
+      .filter((c) => c.resultHash !== winningHash)
+      .map((c) => c.agentAddress);
+
+    // Compute total compute units among agreeing nodes for weighted distribution
+    const totalAgreeingCompute = winningList.reduce(
+      (acc, c) => acc + c.computeUnits,
+      0n
+    );
+
+    let allocatedTotal = 0n;
+    for (let i = 0; i < winningList.length; i++) {
+      const c = winningList[i];
+      if (i === winningList.length - 1) {
+        // Last node absorbs rounding residue so exact rewardPoolWei is distributed
+        payouts[c.agentAddress] = proposal.rewardPoolWei - allocatedTotal;
+      } else {
+        const share = (proposal.rewardPoolWei * c.computeUnits) / totalAgreeingCompute;
+        payouts[c.agentAddress] = share;
+        allocatedTotal += share;
+      }
+    }
+
+    // Dissenting nodes get 0
+    for (const d of dissentingNodes) {
+      payouts[d] = 0n;
+    }
+
+    const updatedProposal: ConsensusProposal = {
+      ...proposal,
+      status: 'consensus_reached',
+      winningHash,
+    };
+
+    return {
+      proposal: updatedProposal,
+      result: {
+        proposalId: proposal.proposalId,
+        consensusReached: true,
+        winningHash,
+        agreeingNodes,
+        dissentingNodes,
+        payouts,
+        clientRefundWei: 0n,
+        evaluatedAt: currentTimestamp,
+      },
+    };
+  }
+
+  // Quorum was NOT reached
+  // Can only finalize as failure if expired or all maxNodes committed
+  if (isExpired || isFull) {
+    const updatedProposal: ConsensusProposal = {
+      ...proposal,
+      status: 'consensus_failed',
+    };
+
+    return {
+      proposal: updatedProposal,
+      result: {
+        proposalId: proposal.proposalId,
+        consensusReached: false,
+        agreeingNodes: [],
+        dissentingNodes: proposal.commitments.map((c) => c.agentAddress),
+        payouts: {},
+        clientRefundWei: proposal.rewardPoolWei,
+        evaluatedAt: currentTimestamp,
+      },
+    };
+  }
+
+  // Quorum not yet reached, but deadline has not passed and more nodes can still join
+  throw new Error('Consensus not yet reached; waiting for additional nodes or expiration');
+}
+
+
