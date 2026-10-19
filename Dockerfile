@@ -33,4 +33,4 @@ COPY --from=builder /app/tsconfig.json ./
 EXPOSE 3001
 
 # Launch the unified x402 reverse proxy & static SPA server
-CMD ["npx", "tsx", "server/index.ts"]
+CMD ["node", "--import", "tsx", "server/index.ts"]
