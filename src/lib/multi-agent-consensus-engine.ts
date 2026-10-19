@@ -109,3 +109,59 @@ export function createConsensusProposal(params: CreateProposalParams): Consensus
     commitments: [],
   };
 }
+
+/**
+ * Registers an autonomous agent commitment to a consensus proposal.
+ */
+export function submitAgentCommitment(
+  proposal: ConsensusProposal,
+  commitment: AgentCommitment,
+  currentTimestamp: number = Math.floor(Date.now() / 1000)
+): ConsensusProposal {
+  if (proposal.status !== 'open' && proposal.status !== 'evaluating') {
+    throw new Error(`Cannot submit commitment: proposal is in '${proposal.status}' state`);
+  }
+
+  if (currentTimestamp > proposal.deadlineTimestamp) {
+    proposal.status = 'expired';
+    throw new Error('Consensus proposal deadline has expired');
+  }
+
+  if (proposal.commitments.length >= proposal.maxNodes) {
+    throw new Error(`Maximum node participation limit (${proposal.maxNodes}) reached`);
+  }
+
+  if (!commitment.agentAddress || !commitment.agentAddress.startsWith('0x')) {
+    throw new Error('Invalid agent EVM address');
+  }
+
+  if (!commitment.resultHash || !commitment.resultHash.startsWith('0x')) {
+    throw new Error('Invalid cryptographic result hash');
+  }
+
+  if (!commitment.signature || commitment.signature.trim().length === 0) {
+    throw new Error('Agent cryptographic signature required');
+  }
+
+  if (commitment.computeUnits <= 0n) {
+    throw new Error('Compute units must be positive');
+  }
+
+  const existing = proposal.commitments.find(
+    (c) => c.agentAddress.toLowerCase() === commitment.agentAddress.toLowerCase()
+  );
+  if (existing) {
+    throw new Error(`Agent ${commitment.agentAddress} has already committed to this proposal`);
+  }
+
+  const updatedCommitments = [...proposal.commitments, commitment];
+  const newStatus: ConsensusStatus =
+    updatedCommitments.length >= proposal.minNodes ? 'evaluating' : 'open';
+
+  return {
+    ...proposal,
+    status: newStatus,
+    commitments: updatedCommitments,
+  };
+}
+
