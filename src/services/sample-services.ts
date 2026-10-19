@@ -710,4 +710,57 @@ export const INITIAL_SERVICES: ServiceManifest[] = [
       },
     ],
   },
+  {
+    schema: 1,
+    name: 'kite-data-attestation-oracle',
+    display_name: 'Kite Data Attestation & Provenance Anchor',
+    description: 'Cryptographic dataset provenance verification, Merkle proof auditing, and quality tier rating for AI training data pipelines.',
+    maintainer: {
+      github: 'gokite-ai',
+      contact: 'data-oracle@gokite.ai',
+    },
+    status: 'testnet',
+    base_url: 'https://data-provenance.sandbox.gokite.ai',
+    network: 'eip155:2368',
+    pay_to: '0x5555555555555555555555555555555555555555',
+    upstream: {
+      name: 'Kite Provenance Anchor Network',
+      url: 'https://anchor.internal.gokite.ai',
+      requires_api_key: false,
+    },
+    categories: ['data', 'ai'],
+    tags: ['provenance', 'merkle-proof', 'dataset', 'quality-score', 'x402'],
+    source: 'typescript-express',
+    endpoints: [
+      {
+        method: 'POST',
+        path: '/v1/data/attest',
+        summary: 'Submit and anchor dataset attestation record with Merkle root and quality score.',
+        price_usd: '0.0005',
+        example_request: {
+          body: {
+            dataset_id: 'ds_crypto_qa_v1',
+            provider: '0x5555555555555555555555555555555555555555',
+            content_merkle_root: '0x1111111111111111111111111111111111111111111111111111111111111111',
+            record_count: 5000,
+            quality_score_bps: 9600,
+          },
+        },
+      },
+      {
+        method: 'POST',
+        path: '/v1/data/verify-chunk',
+        summary: 'Audit Merkle inclusion proof for a single dataset sample or vector embedding chunk.',
+        price_usd: '0.0001',
+        example_request: {
+          body: {
+            leaf_hash: '0x2222222222222222222222222222222222222222222222222222222222222222',
+            proof: ['0x3333333333333333333333333333333333333333333333333333333333333333'],
+            root: '0x1111111111111111111111111111111111111111111111111111111111111111',
+            index: 0,
+          },
+        },
+      },
+    ],
+  },
 ];
