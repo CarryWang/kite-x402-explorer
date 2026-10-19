@@ -316,3 +316,109 @@ export function createSettlementBundle(params: {
   };
 }
 
+/**
+ * Generates an inclusion audit proof for a specific receipt within a settlement bundle.
+ */
+export function generateReceiptProof(
+  receiptId: string,
+  bundle: SettlementBundle
+): ReceiptInclusionProof {
+  const targetIndex = bundle.receipts.findIndex((r) => r.receiptId === receiptId);
+  if (targetIndex === -1) {
+    throw new Error(`Receipt ${receiptId} not found in bundle ${bundle.bundleId}`);
+  }
+
+  const receiptHashes = bundle.receipts.map((r) => hashReceipt(r));
+  const targetHash = receiptHashes[targetIndex];
+
+  let currentLayer = [...receiptHashes];
+  let currentIndex = targetIndex;
+  const auditPath: `0x${string}`[] = [];
+
+  while (currentLayer.length > 1) {
+    const nextLayer: `0x${string}`[] = [];
+    const isOddIndex = currentIndex % 2 === 1;
+    const siblingIndex = isOddIndex ? currentIndex - 1 : currentIndex + 1;
+
+    if (siblingIndex < currentLayer.length) {
+      auditPath.push(currentLayer[siblingIndex]);
+    } else {
+      // Duplicated odd leaf
+      auditPath.push(currentLayer[currentIndex]);
+    }
+
+    for (let i = 0; i < currentLayer.length; i += 2) {
+      if (i + 1 < currentLayer.length) {
+        nextLayer.push(combineMerklePair(currentLayer[i], currentLayer[i + 1]));
+      } else {
+        nextLayer.push(combineMerklePair(currentLayer[i], currentLayer[i]));
+      }
+    }
+
+    currentIndex = Math.floor(currentIndex / 2);
+    currentLayer = nextLayer;
+  }
+
+  return {
+    receiptId,
+    receiptHash: targetHash,
+    leafIndex: targetIndex,
+    auditPath,
+    merkleRoot: bundle.merkleRoot,
+  };
+}
+
+/**
+ * Verifies cryptographic Merkle inclusion of a receipt proof against the recorded root.
+ */
+export function verifyReceiptInclusionProof(proof: ReceiptInclusionProof): boolean {
+  let current = proof.receiptHash;
+
+  for (const sibling of proof.auditPath) {
+    current = combineMerklePair(current, sibling);
+  }
+
+  return current.toLowerCase() === proof.merkleRoot.toLowerCase();
+}
+
+/**
+ * Executes on-chain settlement transition for a bundle, asserting zero replay against existing settled nonces.
+ */
+export function executeSettlementBundle(
+  bundle: SettlementBundle,
+  txHash: `0x${string}`,
+  settledNonceRegistry: Set<string>
+): { settledBundle: SettlementBundle; newlySettledNonces: string[] } {
+  if (bundle.status !== 'pending') {
+    throw new Error(`Cannot settle bundle ${bundle.bundleId} with current status: ${bundle.status}`);
+  }
+  if (!txHash || !txHash.startsWith('0x') || txHash.length !== 66) {
+    throw new Error(`Invalid settlement transaction hash: ${txHash}`);
+  }
+
+  const newlySettledNonces: string[] = [];
+
+  for (const receipt of bundle.receipts) {
+    const scopedKey = `${receipt.payer.toLowerCase()}:${receipt.tokenAddress.toLowerCase()}:${receipt.nonce.toLowerCase()}`;
+    if (settledNonceRegistry.has(scopedKey)) {
+      throw new Error(
+        `Settlement replay detected: nonce ${receipt.nonce} already finalized on-chain for payer ${receipt.payer}`
+      );
+    }
+    newlySettledNonces.push(scopedKey);
+  }
+
+  const settledBundle: SettlementBundle = {
+    ...bundle,
+    status: 'settled',
+    settlementTxHash: txHash,
+    settledAt: Date.now(),
+  };
+
+  return {
+    settledBundle,
+    newlySettledNonces,
+  };
+}
+
+
