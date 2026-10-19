@@ -147,6 +147,18 @@ kite-x402-explorer/
 
 ---
 
+## ⚡ Batch Settlement Bundler & Netting Engine
+
+High-frequency autonomous agent interactions produce massive volumes of micro-transactions. The `BatchSettlementBundler` module aggregates individual EIP-3009 payment authorizations into cryptographically secured settlement batches:
+
+- **Bilateral Netting**: Dynamically matches mutual debits and credits across multiple agents, reducing transaction count and total gas overhead.
+- **Merkle Tree Commitments**: Computes canonical Merkle roots of aggregated payment receipts, enabling low-cost on-chain root commitments.
+- **Inclusion Proofs**: Generates deterministic audit paths (`ReceiptInclusionProof`) allowing individual service providers to prove receipt validity against settled roots.
+- **Replay Protection**: Scopes and tracks settlement nonces per payer and token contract to enforce zero duplicate executions.
+- **Gas Amortization**: Quantifies on-chain execution cost savings against standalone per-call execution.
+
+---
+
 ## 📜 License
 
 Apache-2.0
