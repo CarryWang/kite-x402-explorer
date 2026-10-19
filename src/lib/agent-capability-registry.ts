@@ -237,4 +237,73 @@ export class AgentCapabilityRegistry {
     }
     return evaluations;
   }
+
+  public validateToolInvocationArgs(
+    capabilityId: string,
+    args: Record<string, unknown>
+  ): ArgumentValidationResult {
+    const capability = this.capabilities.get(capabilityId);
+    if (!capability) {
+      return {
+        valid: false,
+        errors: [`Capability not found: ${capabilityId}`],
+      };
+    }
+
+    const errors: string[] = [];
+    const schema = capability.toolSchema;
+
+    for (const param of schema.parameters) {
+      const val = args[param.name];
+
+      if (val === undefined || val === null) {
+        if (param.required) {
+          errors.push(`Missing required parameter: '${param.name}'`);
+        }
+        continue;
+      }
+
+      switch (param.type) {
+        case 'string':
+          if (typeof val !== 'string') {
+            errors.push(`Parameter '${param.name}' must be a string, got ${typeof val}`);
+          } else if (param.enum && !param.enum.includes(val)) {
+            errors.push(
+              `Parameter '${param.name}' value '${val}' is not in allowed enum: [${param.enum.join(', ')}]`
+            );
+          }
+          break;
+        case 'number':
+          if (typeof val !== 'number' || !Number.isFinite(val)) {
+            errors.push(`Parameter '${param.name}' must be a finite number, got ${typeof val}`);
+          }
+          break;
+        case 'boolean':
+          if (typeof val !== 'boolean') {
+            errors.push(`Parameter '${param.name}' must be a boolean, got ${typeof val}`);
+          }
+          break;
+        case 'array':
+          if (!Array.isArray(val)) {
+            errors.push(`Parameter '${param.name}' must be an array`);
+          }
+          break;
+        case 'object':
+          if (typeof val !== 'object' || Array.isArray(val)) {
+            errors.push(`Parameter '${param.name}' must be an object`);
+          }
+          break;
+      }
+    }
+
+    return {
+      valid: errors.length === 0,
+      errors,
+    };
+  }
+}
+
+export interface ArgumentValidationResult {
+  valid: boolean;
+  errors: string[];
 }
