@@ -365,3 +365,131 @@ export function getSubscriptionSummary(
   };
 }
 
+/**
+ * Generates cryptographic settlement digest for the renewal invoice.
+ */
+export function generateRenewalDigest(
+  subscriptionId: string,
+  periodStart: number,
+  periodEnd: number,
+  totalAmountWei: bigint,
+  unitsUsed: number,
+  secretKey?: string
+): Hex {
+  const payload = `${subscriptionId}:${periodStart}:${periodEnd}:${totalAmountWei.toString()}:${unitsUsed}:${secretKey ?? 'kite-x402-sub-default'}`;
+  return keccak256(toHex(payload));
+}
+
+/**
+ * Processes automated subscription renewal at the end of a billing period.
+ */
+export function processSubscriptionRenewal(
+  subscription: SubscriptionRecord,
+  plan: SubscriptionPlan,
+  options: {
+    paymentSuccess: boolean;
+    currentTimestamp?: number;
+    secretKey?: string;
+  }
+): {
+  updatedSubscription: SubscriptionRecord;
+  invoice: RenewalInvoice;
+} {
+  const now = options.currentTimestamp ?? Date.now();
+  const invoiceId = `inv_${subscription.subscriptionId}_${subscription.currentPeriodEnd}`;
+  const totalAmountWei = subscription.periodSpendWei;
+  const unitsUsed = subscription.periodUnitsConsumed;
+
+  const settlementDigest = generateRenewalDigest(
+    subscription.subscriptionId,
+    subscription.currentPeriodStart,
+    subscription.currentPeriodEnd,
+    totalAmountWei,
+    unitsUsed,
+    options.secretKey
+  );
+
+  if (options.paymentSuccess) {
+    const updatedSubscription: SubscriptionRecord = {
+      ...subscription,
+      status: 'active',
+      currentPeriodStart: subscription.currentPeriodEnd,
+      currentPeriodEnd: subscription.currentPeriodEnd + plan.periodDurationMs,
+      periodUnitsConsumed: 0,
+      periodSpendWei: plan.baseCostWei,
+      lifetimeSettledWei: subscription.lifetimeSettledWei + totalAmountWei,
+      consecutiveFailedRenewals: 0,
+    };
+
+    const invoice: RenewalInvoice = {
+      invoiceId,
+      subscriptionId: subscription.subscriptionId,
+      periodStart: subscription.currentPeriodStart,
+      periodEnd: subscription.currentPeriodEnd,
+      totalAmountWei,
+      unitsUsed,
+      settlementDigest,
+      status: 'paid',
+      generatedAt: now,
+    };
+
+    return { updatedSubscription, invoice };
+  } else {
+    const failedAttempts = subscription.consecutiveFailedRenewals + 1;
+    const isNowDelinquent = failedAttempts >= subscription.maxRetryAttempts;
+
+    const updatedSubscription: SubscriptionRecord = {
+      ...subscription,
+      status: isNowDelinquent ? 'delinquent' : subscription.status,
+      consecutiveFailedRenewals: failedAttempts,
+    };
+
+    const invoice: RenewalInvoice = {
+      invoiceId,
+      subscriptionId: subscription.subscriptionId,
+      periodStart: subscription.currentPeriodStart,
+      periodEnd: subscription.currentPeriodEnd,
+      totalAmountWei,
+      unitsUsed,
+      settlementDigest,
+      status: 'failed',
+      generatedAt: now,
+    };
+
+    return { updatedSubscription, invoice };
+  }
+}
+
+/**
+ * Disputes a renewal invoice within the grace period, pausing the subscription pending review.
+ */
+export function disputeRenewalInvoice(
+  invoice: RenewalInvoice,
+  subscription: SubscriptionRecord,
+  reason: string
+): {
+  updatedInvoice: RenewalInvoice;
+  updatedSubscription: SubscriptionRecord;
+} {
+  if (!reason || reason.trim() === '') {
+    throw new Error('Dispute reason must be provided');
+  }
+  if (invoice.status === 'disputed') {
+    throw new Error('Invoice has already been disputed');
+  }
+
+  const updatedInvoice: RenewalInvoice = {
+    ...invoice,
+    status: 'disputed',
+    disputedReason: reason,
+  };
+
+  const updatedSubscription: SubscriptionRecord = {
+    ...subscription,
+    status: 'paused',
+  };
+
+  return { updatedInvoice, updatedSubscription };
+}
+
+
