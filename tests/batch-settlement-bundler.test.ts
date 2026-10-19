@@ -6,10 +6,11 @@ import {
   calculateNetBalances,
   resolveBilateralNetTransfers,
   computeAmortizedGasSavings,
-  createSettlementBundle,
+  createSettlementBundle as createVerifiedSettlementBundle,
   generateReceiptProof,
-  verifyReceiptInclusionProof,
-  executeSettlementBundle,
+  verifyReceiptInclusionProof as verifyAgainstRoot,
+  executeSettlementBundle as recordConfirmedSettlement,
+  type SettlementBundle,
   type BundledReceipt,
 } from '../src/lib/batch-settlement-bundler.js';
 
@@ -17,6 +18,13 @@ const TEST_TOKEN = '0x1111111111111111111111111111111111111111' as `0x${string}`
 const AGENT_A = '0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' as `0x${string}`;
 const AGENT_B = '0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB' as `0x${string}`;
 const AGENT_C = '0xCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC' as `0x${string}`;
+
+const createSettlementBundle = (params: Omit<Parameters<typeof createVerifiedSettlementBundle>[0], 'verifyReceiptAuthorization'>) =>
+  createVerifiedSettlementBundle({ ...params, verifyReceiptAuthorization: () => true });
+const verifyReceiptInclusionProof = (proof: Parameters<typeof verifyAgainstRoot>[0]) =>
+  verifyAgainstRoot(proof, proof.merkleRoot);
+const executeSettlementBundle = (bundle: SettlementBundle, txHash: `0x${string}`, nonces: Set<string>) =>
+  recordConfirmedSettlement(bundle, txHash, nonces, () => true);
 
 function makeMockReceipt(override?: Partial<BundledReceipt>): BundledReceipt {
   return {

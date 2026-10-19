@@ -94,18 +94,27 @@ export function validateToolSchema(schema: ToolFunctionSchema): void {
   }
 }
 
-export function hashCapability(
-  provider: string,
-  name: string,
-  version: string,
-  costPerCallUsd: number
-): string {
-  const content = `${provider.toLowerCase()}:${name.toLowerCase()}:${version}:${costPerCallUsd.toFixed(6)}`;
+export function hashCapability(input: CapabilityRegistrationInput): string {
+  const content = JSON.stringify([
+    normalizeAddress(input.provider), input.name.trim().toLowerCase(), input.version,
+    input.category, input.toolSchema, input.costPerCallUsd, input.avgLatencyMs,
+    input.reputationScore,
+  ]);
   return createHash('sha256').update(content).digest('hex');
 }
 
 export class AgentCapabilityRegistry {
   private capabilities: Map<string, AgentCapability> = new Map();
+
+  constructor(private readonly verifyRegistration?: (input: CapabilityRegistrationInput) => boolean) {
+    if (typeof verifyRegistration !== 'function') {
+      throw new Error('Trusted provider and reputation verification is required');
+    }
+  }
+
+  private snapshot(capability: AgentCapability): AgentCapability {
+    return structuredClone(capability);
+  }
 
   public registerCapability(input: CapabilityRegistrationInput): AgentCapability {
     const provider = normalizeAddress(input.provider);
@@ -132,18 +141,22 @@ export class AgentCapabilityRegistry {
     if (
       typeof input.reputationScore !== 'number' ||
       input.reputationScore < 0 ||
-      input.reputationScore > 100
+      input.reputationScore > 100 ||
+      !Number.isFinite(input.reputationScore)
     ) {
       throw new Error(`Reputation score must be between 0 and 100: ${input.reputationScore}`);
     }
     validateToolSchema(input.toolSchema);
+    if (!this.verifyRegistration?.(input)) {
+      throw new Error('Provider and reputation verification failed');
+    }
 
-    const capabilityId = `cap_${provider.slice(2, 8)}_${input.name.toLowerCase().replace(/[^a-z0-9_-]/g, '_')}_${input.version}`;
+    const capabilityId = `cap_${provider.slice(2)}_${input.name.toLowerCase().replace(/[^a-z0-9_-]/g, '_')}_${input.version}`;
     if (this.capabilities.has(capabilityId)) {
       throw new Error(`Capability already registered: ${capabilityId}`);
     }
 
-    const hash = hashCapability(provider, input.name, input.version, input.costPerCallUsd);
+    const hash = hashCapability(input);
     const capability: AgentCapability = {
       capabilityId,
       provider,
@@ -159,21 +172,22 @@ export class AgentCapabilityRegistry {
       hash,
     };
 
-    this.capabilities.set(capabilityId, capability);
-    return capability;
+    this.capabilities.set(capabilityId, this.snapshot(capability));
+    return this.snapshot(capability);
   }
 
   public getCapability(capabilityId: string): AgentCapability | undefined {
-    return this.capabilities.get(capabilityId);
+    const capability = this.capabilities.get(capabilityId);
+    return capability ? this.snapshot(capability) : undefined;
   }
 
   public listCapabilities(provider?: string): AgentCapability[] {
     const all = Array.from(this.capabilities.values());
     if (!provider) {
-      return all;
+      return all.map((capability) => this.snapshot(capability));
     }
     const normalized = normalizeAddress(provider);
-    return all.filter((c) => c.provider === normalized);
+    return all.filter((c) => c.provider === normalized).map((capability) => this.snapshot(capability));
   }
 
   public updateCapabilityStatus(capabilityId: string, active: boolean): boolean {
@@ -222,7 +236,7 @@ export class AgentCapabilityRegistry {
       const score = repScore * 0.4 + normalizedCostScore * 0.35 + normalizedLatencyScore * 0.25;
 
       return {
-        capability: c,
+        capability: this.snapshot(c),
         score,
         normalizedCostScore,
         normalizedLatencyScore,
@@ -243,7 +257,7 @@ export class AgentCapabilityRegistry {
     args: Record<string, unknown>
   ): ArgumentValidationResult {
     const capability = this.capabilities.get(capabilityId);
-    if (!capability) {
+    if (!capability || !capability.active) {
       return {
         valid: false,
         errors: [`Capability not found: ${capabilityId}`],
@@ -289,7 +303,7 @@ export class AgentCapabilityRegistry {
           }
           break;
         case 'object':
-          if (typeof val !== 'object' || Array.isArray(val)) {
+          if (typeof val !== 'object' || val === null || Array.isArray(val)) {
             errors.push(`Parameter '${param.name}' must be an object`);
           }
           break;

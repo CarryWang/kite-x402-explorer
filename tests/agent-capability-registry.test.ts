@@ -39,7 +39,7 @@ const sampleToolSchema: ToolFunctionSchema = {
 };
 
 test('registers capability successfully with valid schema and sha256 hash', () => {
-  const registry = new AgentCapabilityRegistry();
+  const registry = new AgentCapabilityRegistry(() => true);
   const input: CapabilityRegistrationInput = {
     provider: providerA,
     name: 'Summarizer Pro',
@@ -58,12 +58,12 @@ test('registers capability successfully with valid schema and sha256 hash', () =
   assert.equal(cap.costPerCallUsd, 0.002);
   assert.equal(cap.reputationScore, 92);
   assert.equal(cap.active, true);
-  assert.match(cap.capabilityId, /^cap_111111_summarizer_pro_1\.0\.0$/);
+  assert.match(cap.capabilityId, /^cap_1111111111111111111111111111111111111111_summarizer_pro_1\.0\.0$/);
   assert.match(cap.hash, /^[0-9a-f]{64}$/);
 });
 
 test('rejects registration with invalid parameters', () => {
-  const registry = new AgentCapabilityRegistry();
+  const registry = new AgentCapabilityRegistry(() => true);
   const baseInput: CapabilityRegistrationInput = {
     provider: providerA,
     name: 'Tool',
@@ -121,7 +121,7 @@ test('rejects registration with invalid parameters', () => {
 });
 
 test('rejects duplicate capability registration', () => {
-  const registry = new AgentCapabilityRegistry();
+  const registry = new AgentCapabilityRegistry(() => true);
   const input: CapabilityRegistrationInput = {
     provider: providerA,
     name: 'Embedder',
@@ -141,7 +141,7 @@ test('rejects duplicate capability registration', () => {
 });
 
 test('lists and filters capabilities by provider and handles status updates', () => {
-  const registry = new AgentCapabilityRegistry();
+  const registry = new AgentCapabilityRegistry(() => true);
   const capA = registry.registerCapability({
     provider: providerA,
     name: 'Service A',
@@ -184,7 +184,7 @@ test('lists and filters capabilities by provider and handles status updates', ()
 });
 
 test('queryCapabilities filters by category, cost, latency, reputation, and keyword', () => {
-  const registry = new AgentCapabilityRegistry();
+  const registry = new AgentCapabilityRegistry(() => true);
 
   registry.registerCapability({
     provider: providerA,
@@ -242,7 +242,7 @@ test('queryCapabilities filters by category, cost, latency, reputation, and keyw
 });
 
 test('ranks query results using Pareto efficiency composite scores', () => {
-  const registry = new AgentCapabilityRegistry();
+  const registry = new AgentCapabilityRegistry(() => true);
 
   // Premium: high rep (99), higher cost (0.01), moderate latency (300ms)
   registry.registerCapability({
@@ -289,7 +289,7 @@ test('ranks query results using Pareto efficiency composite scores', () => {
 });
 
 test('validates tool invocation arguments correctly against schema constraints', () => {
-  const registry = new AgentCapabilityRegistry();
+  const registry = new AgentCapabilityRegistry(() => true);
   const cap = registry.registerCapability({
     provider: providerA,
     name: 'Summarizer Pro',

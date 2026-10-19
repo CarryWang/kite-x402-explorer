@@ -217,16 +217,19 @@ export function slashBond(
   if (!isAddress(beneficiary, { strict: false })) {
     throw new Error(`Invalid beneficiary address: ${beneficiary}`);
   }
-  if (slashBps <= 0 || slashBps > 10000) {
+  if (!Number.isInteger(slashBps) || slashBps <= 0 || slashBps > 10000) {
     throw new Error(`Slash basis points must be between 1 and 10000, received ${slashBps}`);
   }
   if (!evidenceHash.startsWith('0x') || evidenceHash.length !== 66) {
     throw new Error(`Invalid 32-byte cryptographic evidence hash: ${evidenceHash}`);
   }
 
-  const slashFraction = (bond.stakedAmountWei * BigInt(slashBps)) / 10000n;
+  const totalSlashable = bond.stakedAmountWei + bond.unbondingAmountWei;
+  const slashFraction = (totalSlashable * BigInt(slashBps)) / 10000n;
   const slashedWei = slashFraction > 0n ? slashFraction : 1n;
-  const remainingStake = bond.stakedAmountWei > slashedWei ? bond.stakedAmountWei - slashedWei : 0n;
+  const slashFromUnbonding = bond.unbondingAmountWei < slashedWei ? bond.unbondingAmountWei : slashedWei;
+  const remainingUnbonding = bond.unbondingAmountWei - slashFromUnbonding;
+  const remainingStake = bond.stakedAmountWei - (slashedWei - slashFromUnbonding);
 
   const slashEvent: SlashEvent = {
     slashId: `slash-${keccak256(stringToHex(`${bond.bondId}:${evidenceHash}:${now}`)).slice(2, 14)}`,
@@ -239,12 +242,17 @@ export function slashBond(
   };
 
   const newStatus: BondStatus =
-    remainingStake < MIN_BOND_AMOUNT_WEI ? 'slashed' : bond.status;
+    bond.status === 'unbonding' && remainingUnbonding > 0n
+      ? 'unbonding'
+      : remainingStake + remainingUnbonding < MIN_BOND_AMOUNT_WEI || remainingStake < bond.activeLockedWei
+        ? 'slashed'
+        : bond.status;
 
   const updatedBond: AgentBondRecord = {
     ...bond,
     stakedAmountWei: remainingStake,
-    activeLockedWei: 0n, // Cancel any active allocations on catastrophic slash
+    unbondingAmountWei: remainingUnbonding,
+    activeLockedWei: bond.activeLockedWei,
     reputationScore: Math.max(0, bond.reputationScore - Math.floor(slashBps / 20)),
     status: newStatus,
     lastActivityAt: now,
@@ -262,7 +270,7 @@ export function initiateUnbonding(
   cooldownSeconds = DEFAULT_UNBONDING_COOLDOWN_SECONDS,
   now = Date.now()
 ): AgentBondRecord {
-  if (bond.status !== 'active') {
+  if (bond.status !== 'active' && bond.status !== 'slashed') {
     throw new Error(`Cannot initiate unbonding from status '${bond.status}'`);
   }
   if (bond.activeLockedWei > 0n) {
@@ -277,6 +285,9 @@ export function initiateUnbonding(
     throw new Error(
       `Cannot unbond ${unbondWei.toString()} wei exceeding current stake ${bond.stakedAmountWei.toString()} wei`
     );
+  }
+  if (!Number.isSafeInteger(cooldownSeconds) || cooldownSeconds <= 0) {
+    throw new Error('Unbonding cooldown must be a positive whole number of seconds');
   }
 
   const remainingStake = bond.stakedAmountWei - unbondWei;
@@ -313,7 +324,11 @@ export function finalizeWithdrawal(
   }
 
   const withdrawnWei = bond.unbondingAmountWei;
-  const newStatus: BondStatus = bond.stakedAmountWei === 0n ? 'withdrawn' : 'active';
+  const newStatus: BondStatus = bond.stakedAmountWei === 0n
+    ? 'withdrawn'
+    : bond.stakedAmountWei < MIN_BOND_AMOUNT_WEI || bond.activeLockedWei > bond.stakedAmountWei
+      ? 'slashed'
+      : 'active';
 
   const updatedBond: AgentBondRecord = {
     ...bond,
@@ -325,5 +340,3 @@ export function finalizeWithdrawal(
 
   return { updatedBond, withdrawnWei };
 }
-
-

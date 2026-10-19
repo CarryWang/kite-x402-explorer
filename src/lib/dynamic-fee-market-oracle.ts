@@ -83,13 +83,11 @@ export interface DynamicFeeMarketOracle {
   calculatePriorityTip(baseFeeUnits: bigint, tier: PriorityTier): bigint;
   generateQuote(
     request: FeeQuoteRequest,
-    currentTimestamp?: number,
-    signingSecret?: string
+    currentTimestamp?: number
   ): FeeQuote;
   verifyQuote(
     quote: FeeQuote,
-    currentTimestamp?: number,
-    signingSecret?: string
+    currentTimestamp?: number
   ): FeeQuoteVerificationResult;
   getMarketState(providerAddress: `0x${string}`): ProviderMarketState | undefined;
   getAllMarkets(): ProviderMarketState[];
@@ -120,8 +118,12 @@ export function computeQuoteDigest(
 }
 
 export function createMarketOracle(
-  customConfig?: Partial<MarketConfig>
+  customConfig?: Partial<MarketConfig>,
+  signingSecret?: string
 ): DynamicFeeMarketOracle {
+  if (!signingSecret || signingSecret.length === 0) {
+    throw new Error('An issuer-held signing secret is required for fee quotes');
+  }
   const config: MarketConfig = {
     ...DEFAULT_MARKET_CONFIG,
     ...customConfig,
@@ -232,8 +234,7 @@ export function createMarketOracle(
 
   function generateQuote(
     request: FeeQuoteRequest,
-    currentTimestamp?: number,
-    signingSecret?: string
+    currentTimestamp?: number
   ): FeeQuote {
     const normalizedProvider = normalizeAddress(request.providerAddress);
     const normalizedClient = normalizeAddress(request.clientAddress);
@@ -277,8 +278,7 @@ export function createMarketOracle(
 
   function verifyQuote(
     quote: FeeQuote,
-    currentTimestamp?: number,
-    signingSecret?: string
+    currentTimestamp?: number
   ): FeeQuoteVerificationResult {
     const now = currentTimestamp ?? Math.floor(Date.now() / 1000);
 

@@ -13,7 +13,7 @@ const clientA = '0x3333333333333333333333333333333333333333' as const;
 const clientB = '0x4444444444444444444444444444444444444444' as const;
 
 test('provider registration initializes state with default boundaries', () => {
-  const oracle = createMarketOracle();
+  const oracle = createMarketOracle(undefined, 'test-secret');
   const state = oracle.registerProvider(providerA, 100, 2000n, 1000);
 
   assert.equal(state.providerAddress, providerA);
@@ -25,7 +25,7 @@ test('provider registration initializes state with default boundaries', () => {
 });
 
 test('provider registration rejects malformed address or nonpositive capacity', () => {
-  const oracle = createMarketOracle();
+  const oracle = createMarketOracle(undefined, 'test-secret');
 
   assert.throws(
     () => oracle.registerProvider('invalid-address' as any, 100),
@@ -54,7 +54,7 @@ test('updateUtilization increases base fee when utilization exceeds target (80%)
     maxAdjustmentBps: 1250, // 12.5% max
     minBaseFeeUnits: 1000n,
     maxBaseFeeUnits: 50000n,
-  });
+  }, 'test-secret');
 
   oracle.registerProvider(providerA, 100, 10000n, 1000);
 
@@ -74,7 +74,7 @@ test('updateUtilization decreases base fee when utilization drops below target',
     maxAdjustmentBps: 1250,
     minBaseFeeUnits: 1000n,
     maxBaseFeeUnits: 50000n,
-  });
+  }, 'test-secret');
 
   oracle.registerProvider(providerA, 100, 10000n, 1000);
 
@@ -90,7 +90,7 @@ test('base fee is strictly clamped between minBaseFeeUnits and maxBaseFeeUnits',
   const oracle = createMarketOracle({
     minBaseFeeUnits: 1000n,
     maxBaseFeeUnits: 5000n,
-  });
+  }, 'test-secret');
 
   oracle.registerProvider(providerA, 10, 4800n, 1000);
 
@@ -110,7 +110,7 @@ test('base fee is strictly clamped between minBaseFeeUnits and maxBaseFeeUnits',
 });
 
 test('calculatePriorityTip computes expected tip for each PriorityTier', () => {
-  const oracle = createMarketOracle();
+  const oracle = createMarketOracle(undefined, 'test-secret');
   const baseFee = 10000n;
 
   // economy = 0%
@@ -124,7 +124,7 @@ test('calculatePriorityTip computes expected tip for each PriorityTier', () => {
 });
 
 test('generateQuote produces valid quote with cryptographic digest and correct TTL', () => {
-  const oracle = createMarketOracle({ quoteTtlSeconds: 120 });
+  const oracle = createMarketOracle({ quoteTtlSeconds: 120 }, 'test-secret');
   oracle.registerProvider(providerA, 100, 10000n, 1000);
 
   const quote = oracle.generateQuote(
@@ -148,7 +148,7 @@ test('generateQuote produces valid quote with cryptographic digest and correct T
 });
 
 test('verifyQuote validates authentic quotes and catches tampering or expiration', () => {
-  const oracle = createMarketOracle({ quoteTtlSeconds: 60 });
+  const oracle = createMarketOracle({ quoteTtlSeconds: 60 }, 'test-secret');
   oracle.registerProvider(providerA, 100, 10000n, 1000);
 
   const quote = oracle.generateQuote(
@@ -190,26 +190,25 @@ test('verifyQuote validates authentic quotes and catches tampering or expiration
 });
 
 test('HMAC signing secret enforces trusted issuer verification', () => {
-  const oracle = createMarketOracle();
+  const oracle = createMarketOracle(undefined, 'super-secret-provider-key-99');
   oracle.registerProvider(providerA, 100, 10000n, 1000);
 
-  const secret = 'super-secret-provider-key-99';
   const quote = oracle.generateQuote(
     {
       providerAddress: providerA,
       clientAddress: clientA,
       priorityTier: 'flash',
     },
-    1000,
-    secret
+    1000
   );
 
   // Verification with matching secret succeeds
-  const matchRes = oracle.verifyQuote(quote, 1020, secret);
+  const matchRes = oracle.verifyQuote(quote, 1020);
   assert.equal(matchRes.valid, true);
 
   // Verification with wrong secret fails tamper check
-  const wrongRes = oracle.verifyQuote(quote, 1020, 'wrong-secret');
+  const wrongOracle = createMarketOracle(undefined, 'wrong-secret');
+  const wrongRes = wrongOracle.verifyQuote(quote, 1020);
   assert.equal(wrongRes.valid, false);
   assert.equal(wrongRes.reason, 'TAMPERED_DIGEST');
 });

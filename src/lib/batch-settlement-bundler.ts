@@ -49,6 +49,7 @@ export interface SettlementBundle {
 
 export interface ReceiptInclusionProof {
   receiptId: string;
+  receipt: BundledReceipt;
   receiptHash: `0x${string}`;
   leafIndex: number;
   auditPath: `0x${string}`[];
@@ -75,13 +76,15 @@ export function hashReceipt(receipt: BundledReceipt): `0x${string}` {
     throw new Error(`Invalid receipt nonce format: ${receipt.nonce}`);
   }
 
-  // Canonical payload serialization: payer:recipient:tokenAddress:amount:nonce:timestamp
+  // Bind the proof to the receipt identity and the authorization supplied by its issuer.
   const payload = [
+    receipt.receiptId,
     receipt.payer.toLowerCase(),
     receipt.recipient.toLowerCase(),
     receipt.tokenAddress.toLowerCase(),
     receipt.amount.toString(),
     receipt.nonce.toLowerCase(),
+    receipt.signature.toLowerCase(),
     receipt.timestamp.toString(),
   ].join(':');
 
@@ -257,8 +260,10 @@ export function createSettlementBundle(params: {
   tokenAddress: `0x${string}`;
   baseTxGas?: bigint;
   perTransferGas?: bigint;
+  /** Trusted EIP-3009 verifier supplied by the settlement integration. */
+  verifyReceiptAuthorization: (receipt: BundledReceipt) => boolean;
 }): SettlementBundle {
-  const { bundleId, receipts, tokenAddress, baseTxGas, perTransferGas } = params;
+  const { bundleId, receipts, tokenAddress, baseTxGas, perTransferGas, verifyReceiptAuthorization } = params;
 
   if (!bundleId || bundleId.trim().length === 0) {
     throw new Error('Bundle ID must be a non-empty string');
@@ -268,6 +273,9 @@ export function createSettlementBundle(params: {
   }
   if (!receipts || receipts.length === 0) {
     throw new Error('Cannot create an empty settlement bundle');
+  }
+  if (typeof verifyReceiptAuthorization !== 'function') {
+    throw new Error('Trusted receipt authorization verifier is required');
   }
 
   const seenNonces = new Set<string>();
@@ -288,13 +296,17 @@ export function createSettlementBundle(params: {
     seenNonces.add(nonceKey);
 
     const hash = hashReceipt(receipt);
+    if (!verifyReceiptAuthorization(receipt)) {
+      throw new Error(`Receipt authorization rejected: ${receipt.receiptId}`);
+    }
     receiptHashes.push(hash);
     totalVolume += receipt.amount;
   }
 
   const merkleRoot = computeReceiptMerkleRoot(receiptHashes);
-  const netBalances = calculateNetBalances(receipts);
-  const netTransfers = resolveBilateralNetTransfers(netBalances);
+  // EIP-3009 signatures authorize exact payer/recipient edges. Net balances are
+  // analytical only; executing newly inferred edges needs a separate clearing contract.
+  const netTransfers = receipts.map(({ payer, recipient, amount }) => ({ payer, recipient, amount }));
   const gasSavings = computeAmortizedGasSavings(
     receipts.length,
     netTransfers.length,
@@ -305,7 +317,7 @@ export function createSettlementBundle(params: {
   return {
     bundleId,
     tokenAddress,
-    receipts: [...receipts],
+    receipts: receipts.map((receipt) => ({ ...receipt })),
     receiptCount: receipts.length,
     totalVolume,
     merkleRoot,
@@ -361,6 +373,7 @@ export function generateReceiptProof(
 
   return {
     receiptId,
+    receipt: { ...bundle.receipts[targetIndex] },
     receiptHash: targetHash,
     leafIndex: targetIndex,
     auditPath,
@@ -371,29 +384,50 @@ export function generateReceiptProof(
 /**
  * Verifies cryptographic Merkle inclusion of a receipt proof against the recorded root.
  */
-export function verifyReceiptInclusionProof(proof: ReceiptInclusionProof): boolean {
+export function verifyReceiptInclusionProof(
+  proof: ReceiptInclusionProof,
+  expectedRoot: `0x${string}`
+): boolean {
+  if (!/^0x[0-9a-f]{64}$/i.test(expectedRoot) || proof.merkleRoot.toLowerCase() !== expectedRoot.toLowerCase()) {
+    return false;
+  }
+  try {
+    if (proof.receipt.receiptId !== proof.receiptId || hashReceipt(proof.receipt).toLowerCase() !== proof.receiptHash.toLowerCase()) {
+      return false;
+    }
+  } catch {
+    return false;
+  }
   let current = proof.receiptHash;
 
   for (const sibling of proof.auditPath) {
     current = combineMerklePair(current, sibling);
   }
 
-  return current.toLowerCase() === proof.merkleRoot.toLowerCase();
+  return current.toLowerCase() === expectedRoot.toLowerCase();
 }
 
 /**
- * Executes on-chain settlement transition for a bundle, asserting zero replay against existing settled nonces.
+ * Records a settlement only after an integration confirms the transaction and
+ * every authorized transfer. The in-memory nonce set must be persisted by the caller.
  */
 export function executeSettlementBundle(
   bundle: SettlementBundle,
   txHash: `0x${string}`,
-  settledNonceRegistry: Set<string>
+  settledNonceRegistry: Set<string>,
+  confirmOnChainSettlement: (bundle: SettlementBundle, txHash: `0x${string}`) => boolean
 ): { settledBundle: SettlementBundle; newlySettledNonces: string[] } {
   if (bundle.status !== 'pending') {
     throw new Error(`Cannot settle bundle ${bundle.bundleId} with current status: ${bundle.status}`);
   }
   if (!txHash || !txHash.startsWith('0x') || txHash.length !== 66) {
     throw new Error(`Invalid settlement transaction hash: ${txHash}`);
+  }
+  if (typeof confirmOnChainSettlement !== 'function' || !confirmOnChainSettlement(bundle, txHash)) {
+    throw new Error('Trusted on-chain settlement confirmation is required');
+  }
+  if (computeReceiptMerkleRoot(bundle.receipts.map(hashReceipt)).toLowerCase() !== bundle.merkleRoot.toLowerCase()) {
+    throw new Error('Settlement bundle receipts do not match its Merkle root');
   }
 
   const newlySettledNonces: string[] = [];
@@ -414,11 +448,10 @@ export function executeSettlementBundle(
     settlementTxHash: txHash,
     settledAt: Date.now(),
   };
+  for (const nonce of newlySettledNonces) settledNonceRegistry.add(nonce);
 
   return {
     settledBundle,
     newlySettledNonces,
   };
 }
-
-

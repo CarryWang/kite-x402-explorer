@@ -147,26 +147,14 @@ kite-x402-explorer/
 
 ---
 
-## ⚡ Batch Settlement Bundler & Netting Engine
+## Experimental agent market libraries
 
-High-frequency autonomous agent interactions produce massive volumes of micro-transactions. The `BatchSettlementBundler` module aggregates individual EIP-3009 payment authorizations into cryptographically secured settlement batches:
+The batch settlement, bonding escrow, dynamic fee oracle, and capability registry modules are independent in-memory library prototypes. They are not wired into the API or a deployed contract and do not move funds.
 
-- **Bilateral Netting**: Dynamically matches mutual debits and credits across multiple agents, reducing transaction count and total gas overhead.
-- **Merkle Tree Commitments**: Computes canonical Merkle roots of aggregated payment receipts, enabling low-cost on-chain root commitments.
-- **Inclusion Proofs**: Generates deterministic audit paths (`ReceiptInclusionProof`) allowing individual service providers to prove receipt validity against settled roots.
-- **Replay Protection**: Scopes and tracks settlement nonces per payer and token contract to enforce zero duplicate executions.
-- **Gas Amortization**: Quantifies on-chain execution cost savings against standalone per-call execution.
-
-## 🛡️ Agent Staking & Bonding Escrow Registry
-## 🛡️ Agent Staking & Bonding Escrow Registry
-
-To prevent malicious behavior and Sybil compute attacks in the decentralized Kite AI ecosystem, compute providers stake collateral via the `AgentBondingEscrow` module before receiving high-value task routing:
-
-- **Economic Bond Requirement**: Nodes lock security deposits (`stakedAmountWei >= MIN_BOND_AMOUNT_WEI`) guaranteeing operational adherence.
-- **Dynamic Capacity Locking**: Active tasks allocate and lock collateral (`lockTaskCapacity`), enforcing strict solvency before AI inference begins.
-- **Punitive Slashing (`slashBond`)**: Provable SLA failures or conflicting cryptographic attestations trigger proportional slashing (`slashBps`), routing compensation directly to aggrieved clients.
-- **Cooldown Unbonding (`initiateUnbonding`)**: Unbonding initiates a mandatory time-lock cooldown period (default 7 days) that blocks capital withdrawal while tasks or disputes remain active.
-- **Reputation Tier Oracle (`calculateBondTier`)**: Staked capital and verifiable task completion dynamically elevate nodes across Bronze, Silver, Gold, and Sovereign tiers with enhanced concurrency limits.
+- The batch bundler hashes receipts and builds Merkle proofs. A trusted integration must verify each EIP-3009 authorization before bundling and independently confirm the transaction and its transfers before recording settlement. The nonce set must be persisted. Net balances are analytical only: signed payer/recipient edges cannot be replaced by a newly inferred net transfer.
+- The bonding module models locks, unbonding, and slashing in memory. It does not custody collateral, verify adjudication evidence, or compensate a beneficiary on-chain. A production integration must supply authenticated state transitions and a trusted dispute decision.
+- The fee oracle requires an issuer-held secret to sign payable quotes. Its utilization inputs and clock must come from trusted server state.
+- The capability registry requires a trusted provider and reputation verifier. Its score is an independent routing hint; registration does not prove a provider has bonded funds or completed a paid settlement.
 
 ---
 
