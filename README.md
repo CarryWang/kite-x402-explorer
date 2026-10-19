@@ -157,6 +157,17 @@ High-frequency autonomous agent interactions produce massive volumes of micro-tr
 - **Replay Protection**: Scopes and tracks settlement nonces per payer and token contract to enforce zero duplicate executions.
 - **Gas Amortization**: Quantifies on-chain execution cost savings against standalone per-call execution.
 
+## 🛡️ Agent Staking & Bonding Escrow Registry
+## 🛡️ Agent Staking & Bonding Escrow Registry
+
+To prevent malicious behavior and Sybil compute attacks in the decentralized Kite AI ecosystem, compute providers stake collateral via the `AgentBondingEscrow` module before receiving high-value task routing:
+
+- **Economic Bond Requirement**: Nodes lock security deposits (`stakedAmountWei >= MIN_BOND_AMOUNT_WEI`) guaranteeing operational adherence.
+- **Dynamic Capacity Locking**: Active tasks allocate and lock collateral (`lockTaskCapacity`), enforcing strict solvency before AI inference begins.
+- **Punitive Slashing (`slashBond`)**: Provable SLA failures or conflicting cryptographic attestations trigger proportional slashing (`slashBps`), routing compensation directly to aggrieved clients.
+- **Cooldown Unbonding (`initiateUnbonding`)**: Unbonding initiates a mandatory time-lock cooldown period (default 7 days) that blocks capital withdrawal while tasks or disputes remain active.
+- **Reputation Tier Oracle (`calculateBondTier`)**: Staked capital and verifiable task completion dynamically elevate nodes across Bronze, Silver, Gold, and Sovereign tiers with enhanced concurrency limits.
+
 ---
 
 ## 📜 License
