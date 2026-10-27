@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from './vitest-compat.js';
 import { AgentReputationScorer } from '../src/lib/agent-reputation-scorer';
 
 describe('AgentReputationScorer', () => {
@@ -29,5 +29,20 @@ describe('AgentReputationScorer', () => {
 
     expect(report.tier).toBe('PROBATIONARY');
     expect(report.penaltyMultiplier).toBe(1.5);
+  });
+
+  it('rejects settlement counts that exceed total executions', () => {
+    expect(() => AgentReputationScorer.calculateReputation({
+      agentAddress: '0xAgent003', totalExecutions: 1, successfulSettlements: 2,
+      failedSettlements: 0, disputeCount: 0, averageLatencyMs: 0,
+    })).toThrow();
+  });
+
+  it('does not trust a single successful execution', () => {
+    const report = AgentReputationScorer.calculateReputation({
+      agentAddress: '0xAgent004', totalExecutions: 1, successfulSettlements: 1,
+      failedSettlements: 0, disputeCount: 0, averageLatencyMs: 100,
+    });
+    expect(report.tier === 'TRUSTED').toBe(false);
   });
 });

@@ -40,6 +40,12 @@ const INTERVAL_MS: Record<SubscriptionInterval, number> = {
 export class AgentSubscriptionManager {
   private plans: Map<string, SubscriptionPlan> = new Map();
   private subscriptions: Map<string, AgentSubscription> = new Map();
+  private usedPaymentTxHashes: Set<string> = new Set();
+
+  constructor(private readonly verifyPayment?: (
+    txHash: string,
+    payment: Readonly<{ subscriberAgent: string; providerAgent: string; planId: string; amountAtomic: bigint }>
+  ) => boolean) {}
 
   /**
    * Registers a subscription plan.
@@ -51,6 +57,9 @@ export class AgentSubscriptionManager {
     interval: SubscriptionInterval,
     maxCallsPerInterval: number = 1000
   ): SubscriptionPlan {
+    if (priceAtomic <= 0n || !Number.isSafeInteger(maxCallsPerInterval) || maxCallsPerInterval <= 0 || !INTERVAL_MS[interval]) {
+      throw new Error('Invalid subscription plan');
+    }
     const plan: SubscriptionPlan = {
       planId,
       name,
@@ -60,7 +69,7 @@ export class AgentSubscriptionManager {
       maxCallsPerInterval,
     };
     this.plans.set(planId, plan);
-    return plan;
+    return { ...plan };
   }
 
   /**
@@ -76,6 +85,10 @@ export class AgentSubscriptionManager {
     if (!plan) {
       throw new Error(`Plan ${planId} not found`);
     }
+    this.assertVerifiedPayment(initialPaymentTxHash, {
+      subscriberAgent: subscriberAgent.toLowerCase(), providerAgent: providerAgent.toLowerCase(),
+      planId, amountAtomic: plan.priceAtomic,
+    });
 
     const now = Date.now();
     const subscriptionId = `sub_${now}_${Math.random().toString(36).substring(2, 8)}`;
@@ -96,7 +109,8 @@ export class AgentSubscriptionManager {
     };
 
     this.subscriptions.set(subscriptionId, sub);
-    return sub;
+    this.usedPaymentTxHashes.add(initialPaymentTxHash.toLowerCase());
+    return { ...sub };
   }
 
   /**
@@ -138,9 +152,15 @@ export class AgentSubscriptionManager {
     if (!sub) {
       throw new Error('Subscription not found');
     }
+    if (sub.status === 'CANCELLED') throw new Error('Cancelled subscription cannot be renewed');
     const plan = this.plans.get(sub.planId)!;
 
     const now = Date.now();
+    if (now < sub.currentPeriodEnd) throw new Error('Current subscription period has not ended');
+    this.assertVerifiedPayment(renewalTxHash, {
+      subscriberAgent: sub.subscriberAgent, providerAgent: sub.providerAgent,
+      planId: sub.planId, amountAtomic: plan.priceAtomic,
+    });
     const periodBase = Math.max(now, sub.currentPeriodEnd);
 
     sub.status = 'ACTIVE';
@@ -149,11 +169,25 @@ export class AgentSubscriptionManager {
     sub.callsConsumedThisPeriod = 0;
     sub.totalSettledAmountAtomic += plan.priceAtomic;
     sub.lastRenewalTxHash = renewalTxHash;
+    this.usedPaymentTxHashes.add(renewalTxHash.toLowerCase());
 
-    return sub;
+    return { ...sub };
   }
 
   public getSubscription(subscriptionId: string): AgentSubscription | undefined {
-    return this.subscriptions.get(subscriptionId);
+    const sub = this.subscriptions.get(subscriptionId);
+    return sub && { ...sub };
+  }
+
+  private assertVerifiedPayment(
+    txHash: string,
+    payment: Readonly<{ subscriberAgent: string; providerAgent: string; planId: string; amountAtomic: bigint }>
+  ): void {
+    if (!txHash || this.usedPaymentTxHashes.has(txHash.toLowerCase())) {
+      throw new Error('Payment transaction already used or missing');
+    }
+    if (!this.verifyPayment || !this.verifyPayment(txHash, payment)) {
+      throw new Error('Subscription payment verification failed');
+    }
   }
 }

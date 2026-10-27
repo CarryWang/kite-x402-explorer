@@ -149,7 +149,7 @@ kite-x402-explorer/
 
 ## Experimental agent market libraries
 
-The batch settlement, bonding escrow, dynamic fee oracle, and capability registry modules are independent in-memory library prototypes. They are not wired into the API or a deployed contract and do not move funds.
+The batch settlement, bonding escrow, dynamic fee oracle, capability registry, subscription, relay, liquidity, bridge, insurance, state channel, arbitration, treasury, invoice, indexer, streaming, reputation, receipt proof, and anomaly modules are independent in-memory library prototypes. They are not wired into the API or a deployed contract and do not move funds. Their payment, payout, and cross-chain state changes require trusted external verification and durable state before production use.
 
 - The batch bundler hashes receipts and builds Merkle proofs. A trusted integration must verify each EIP-3009 authorization before bundling and independently confirm the transaction and its transfers before recording settlement. The nonce set must be persisted. Net balances are analytical only: signed payer/recipient edges cannot be replaced by a newly inferred net transfer.
 - The bonding module models locks, unbonding, and slashing in memory. It does not custody collateral, verify adjudication evidence, or compensate a beneficiary on-chain. A production integration must supply authenticated state transitions and a trusted dispute decision.

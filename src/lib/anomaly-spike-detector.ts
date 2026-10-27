@@ -29,6 +29,11 @@ export class AnomalySpikeDetector {
   }
 
   public recordObservation(obs: VolumeObservation): AnomalyAlert {
+    if (!Number.isFinite(obs.volumeUsd) || obs.volumeUsd < 0 ||
+      !Number.isFinite(obs.failureRate) || obs.failureRate < 0 || obs.failureRate > 1 ||
+      !Number.isFinite(obs.timestamp)) {
+      throw new Error('Invalid volume observation');
+    }
     let alert: AnomalyAlert = {
       isAnomaly: false,
       severity: 'LOW',
@@ -41,13 +46,13 @@ export class AnomalySpikeDetector {
       const volumes = this.history.map((h) => h.volumeUsd);
       const mean = volumes.reduce((a, b) => a + b, 0) / volumes.length;
       const variance = volumes.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / volumes.length;
-      const stdDev = Math.sqrt(variance) || 1;
+      const stdDev = Math.max(Math.sqrt(variance), mean * 0.05, 1);
       const zScore = (obs.volumeUsd - mean) / stdDev;
 
       alert.movingAverageUsd = Math.round(mean * 100) / 100;
       alert.zScore = Math.round(zScore * 100) / 100;
 
-      if (zScore >= this.zScoreThreshold || obs.failureRate > 0.5) {
+      if (zScore >= this.zScoreThreshold) {
         alert.isAnomaly = true;
         if (zScore >= 4.0 || obs.failureRate > 0.8) {
           alert.severity = 'CRITICAL';
@@ -59,6 +64,17 @@ export class AnomalySpikeDetector {
           alert.severity = 'MEDIUM';
           alert.reason = 'Moderate volume anomaly detected';
         }
+      }
+    }
+
+    if (obs.failureRate > 0.5) {
+      alert.isAnomaly = true;
+      if (obs.failureRate > 0.8) {
+        alert.severity = 'CRITICAL';
+        alert.reason = 'Critical failure rate detected';
+      } else if (alert.severity === 'LOW') {
+        alert.severity = 'MEDIUM';
+        alert.reason = 'Elevated failure rate detected';
       }
     }
 

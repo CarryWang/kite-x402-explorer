@@ -55,12 +55,15 @@ export function createVaultPool(params: {
   initialDepositWei: bigint;
   reserveRatioBps?: number;
   timestamp?: number;
-}): VaultPool {
+}, verifyDeposit?: (params: { settlementAsset: `0x${string}`; initialDepositWei: bigint }) => boolean): VaultPool {
   if (!isAddress(params.settlementAsset)) {
     throw new Error(`Invalid settlement asset address: ${params.settlementAsset}`);
   }
   if (params.initialDepositWei <= 0n) {
     throw new Error('Initial deposit must be strictly positive');
+  }
+  if (!verifyDeposit?.(params)) {
+    throw new Error('Verified initial deposit required');
   }
 
   const reserveRatio = params.reserveRatioBps ?? 2000;
@@ -87,12 +90,15 @@ export function createVaultPool(params: {
 /**
  * Deposits additional stablecoin liquidity into the vault pool.
  */
-export function depositToVault(pool: VaultPool, amountWei: bigint): VaultPool {
+export function depositToVault(pool: VaultPool, amountWei: bigint, verifyDeposit?: (pool: VaultPool, amountWei: bigint) => boolean): VaultPool {
   if (pool.status !== 'active') {
     throw new Error(`Cannot deposit to vault in state: ${pool.status}`);
   }
   if (amountWei <= 0n) {
     throw new Error('Deposit amount must be positive');
+  }
+  if (!verifyDeposit?.(pool, amountWei)) {
+    throw new Error('Verified vault deposit required');
   }
 
   return {
@@ -147,6 +153,9 @@ export function drawLiquidityForPayment(
   if (!creditLine.authorized) {
     throw new Error('Agent credit line is not authorized');
   }
+  if (creditLine.poolId !== pool.poolId) {
+    throw new Error('Credit line pool mismatch');
+  }
   if (drawAmountWei <= 0n) {
     throw new Error('Draw amount must be positive');
   }
@@ -198,11 +207,17 @@ export function repayLiquidity(
   creditLine: AgentCreditLine,
   repayAmountWei: bigint,
 ): { pool: VaultPool; creditLine: AgentCreditLine } {
+  if (creditLine.poolId !== pool.poolId) {
+    throw new Error('Credit line pool mismatch');
+  }
   if (repayAmountWei <= 0n) {
     throw new Error('Repay amount must be positive');
   }
   if (repayAmountWei > creditLine.currentDrawnWei) {
     throw new Error(`Cannot repay more than currently drawn: ${repayAmountWei} > ${creditLine.currentDrawnWei}`);
+  }
+  if (repayAmountWei > pool.allocatedLiquidityWei) {
+    throw new Error('Repayment exceeds pool allocated liquidity');
   }
 
   const updatedPool: VaultPool = {

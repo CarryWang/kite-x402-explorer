@@ -1,14 +1,31 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from './vitest-compat.js';
 import {
-  openStateChannel,
+  openStateChannel as openStateChannelVerified,
   updateChannelState,
   generateCloseProof,
   initiateChannelClose,
 } from '../src/lib/p2p-state-channel';
 
+const openStateChannel = (params: Parameters<typeof openStateChannelVerified>[0]) => openStateChannelVerified(params, () => true);
+
 describe('p2p-state-channel', () => {
   const sender = '0x1111111111111111111111111111111111111111' as const;
   const receiver = '0x2222222222222222222222222222222222222222' as const;
+
+  it('rejects forged negative close amounts', () => {
+    const channel = openStateChannel({ sender, receiver, depositAmountWei: 100n });
+    expect(() => generateCloseProof(channel, { channelId: channel.channelId, nonce: 1n, transferredAmountWei: -1n, timestamp: 1000, digest: '0x00' })).toThrow(/negative|invalid|state/i);
+  });
+
+  it('requires a verified signed state to close', () => {
+    const channel = openStateChannel({ sender, receiver, depositAmountWei: 100n });
+    const updated = updateChannelState(channel, 10n);
+    expect(() => generateCloseProof(updated.channel, updated.update)).toThrow(/Verified/i);
+  });
+
+  it('does not open a channel without verified collateral funding', () => {
+    expect(() => openStateChannelVerified({ sender, receiver, depositAmountWei: 100n })).toThrow(/fund|verif/i);
+  });
 
   it('opens a state channel with initial deposit', () => {
     const channel = openStateChannel({
@@ -60,7 +77,7 @@ describe('p2p-state-channel', () => {
     });
 
     const { channel: updatedChannel, update } = updateChannelState(channel, 400_000_000n);
-    const proof = generateCloseProof(updatedChannel, update);
+    const proof = generateCloseProof(updatedChannel, update, () => true);
 
     expect(proof.finalNonce).toBe(1n);
     expect(proof.paymentToReceiverWei).toBe(400_000_000n); // 400 USDC to receiver

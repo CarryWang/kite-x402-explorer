@@ -47,6 +47,11 @@ export class AgentSubgraphIndexer {
   public ingest(event: IndexedPaymentEvent): void {
     const payerKey = event.payerAddress.toLowerCase();
     const recipientKey = event.recipientAddress.toLowerCase();
+    const previous = this.events.get(event.eventId);
+    if (previous) {
+      this.payerIndex.get(previous.payerAddress)?.delete(event.eventId);
+      this.recipientIndex.get(previous.recipientAddress)?.delete(event.eventId);
+    }
 
     this.events.set(event.eventId, {
       ...event,

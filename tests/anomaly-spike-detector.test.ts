@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from './vitest-compat.js';
 import { AnomalySpikeDetector } from '../src/lib/anomaly-spike-detector';
 
 describe('AnomalySpikeDetector', () => {
@@ -17,6 +17,13 @@ describe('AnomalySpikeDetector', () => {
       detector.recordObservation({ timestamp: 1000 + i, volumeUsd: 50, failureRate: 0.0 });
     }
     const alert = detector.recordObservation({ timestamp: 1010, volumeUsd: 5000, failureRate: 0.0 });
+    expect(alert.isAnomaly).toBe(true);
+    expect(alert.severity).toBe('CRITICAL');
+  });
+
+  it('alerts on critical failure rate before the volume baseline warms up', () => {
+    const detector = new AnomalySpikeDetector();
+    const alert = detector.recordObservation({ timestamp: 1000, volumeUsd: 50, failureRate: 0.9 });
     expect(alert.isAnomaly).toBe(true);
     expect(alert.severity).toBe('CRITICAL');
   });

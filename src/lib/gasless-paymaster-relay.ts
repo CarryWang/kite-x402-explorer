@@ -22,6 +22,7 @@ export interface SponsorshipPool {
   spentWei: bigint;
   policy: PaymasterPolicy;
   agentDailySpend: Map<string, { date: string; spentWei: bigint }>;
+  consumedNonces: Set<string>;
   createdAt: number;
 }
 
@@ -62,7 +63,7 @@ export function createPaymasterPool(params: {
   sponsor: string;
   initialDepositWei: bigint;
   policy: PaymasterPolicy;
-}): SponsorshipPool {
+}, verifyFunding?: (params: { poolId: string; sponsor: string; initialDepositWei: bigint }) => boolean): SponsorshipPool {
   if (!params.poolId || params.poolId.trim() === '') {
     throw new Error('poolId must not be empty');
   }
@@ -71,6 +72,9 @@ export function createPaymasterPool(params: {
   }
   if (params.initialDepositWei <= 0n) {
     throw new Error('initialDepositWei must be strictly positive');
+  }
+  if (!verifyFunding?.(params)) {
+    throw new Error('Verified sponsor funding required');
   }
   if (params.policy.maxGasLimitPerTx <= 0n) {
     throw new Error('maxGasLimitPerTx must be positive');
@@ -88,6 +92,7 @@ export function createPaymasterPool(params: {
       blacklistedAgents: params.policy.blacklistedAgents?.map((a) => a.toLowerCase()),
     },
     agentDailySpend: new Map(),
+    consumedNonces: new Set(),
     createdAt: Date.now(),
   };
 }
@@ -95,9 +100,12 @@ export function createPaymasterPool(params: {
 /**
  * Deposits additional gas funds into an existing sponsorship pool.
  */
-export function depositGasToPool(pool: SponsorshipPool, amountWei: bigint): SponsorshipPool {
+export function depositGasToPool(pool: SponsorshipPool, amountWei: bigint, verifyDeposit?: (pool: SponsorshipPool, amountWei: bigint) => boolean): SponsorshipPool {
   if (amountWei <= 0n) {
     throw new Error('deposit amount must be positive');
+  }
+  if (!verifyDeposit?.(pool, amountWei)) {
+    throw new Error('Verified gas deposit required');
   }
   return {
     ...pool,
@@ -115,6 +123,12 @@ export function validateSponsorshipEligibility(
 ): { eligible: boolean; reason?: string } {
   const agentLower = request.agent.toLowerCase();
   const tokenLower = request.token.toLowerCase();
+  if (request.estimatedGas <= 0n || gasPriceWei <= 0n || request.amount <= 0n) {
+    return { eligible: false, reason: 'gas, gas price, and payment amount must be positive' };
+  }
+  if (!request.nonce || pool.consumedNonces.has(`${agentLower}:${request.nonce}`)) {
+    return { eligible: false, reason: 'nonce missing or already consumed' };
+  }
 
   if (pool.policy.blacklistedAgents?.includes(agentLower)) {
     return { eligible: false, reason: 'agent is blacklisted from gas sponsorship' };
@@ -159,11 +173,15 @@ export function validateSponsorshipEligibility(
 export function executeSponsoredRelay(
   pool: SponsorshipPool,
   request: RelayRequest,
-  gasPriceWei: bigint
+  gasPriceWei: bigint,
+  verifyRequest?: (pool: SponsorshipPool, request: RelayRequest) => boolean,
 ): { receipt: SponsoredReceipt; updatedPool: SponsorshipPool } {
   const check = validateSponsorshipEligibility(pool, request, gasPriceWei);
   if (!check.eligible) {
     throw new Error(`Sponsorship rejected: ${check.reason}`);
+  }
+  if (!verifyRequest?.(pool, request)) {
+    throw new Error('Verified signed relay request required');
   }
 
   const totalCostWei = request.estimatedGas * gasPriceWei;
@@ -186,6 +204,7 @@ export function executeSponsoredRelay(
     balanceWei: newBalance,
     spentWei: newSpent,
     agentDailySpend: updatedDaily,
+    consumedNonces: new Set([...pool.consumedNonces, `${agentLower}:${request.nonce}`]),
   };
 
   const receipt: SponsoredReceipt = {

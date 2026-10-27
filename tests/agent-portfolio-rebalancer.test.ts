@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from './vitest-compat.js';
 import { AgentPortfolioRebalancer, TokenAllocation, PortfolioAssetBalance } from '../src/lib/agent-portfolio-rebalancer';
 
 describe('AgentPortfolioRebalancer', () => {
@@ -114,5 +114,33 @@ describe('AgentPortfolioRebalancer', () => {
 
     const wethInst = result.instructions.find((i) => i.tokenSymbol === 'WETH');
     expect(wethInst?.action).toBe('BUY');
+  });
+
+  it('rejects missing target assets and never sells protected reserves', () => {
+    const rebalancer = new AgentPortfolioRebalancer(targetAllocations);
+    const usdc = { tokenSymbol: 'USDC', tokenAddress: targetAllocations[0].tokenAddress, balance: 100_000_000n, priceUsdAtomic: 1_000_000n, decimals: 6 };
+    expect(() => rebalancer.evaluate('agent', [usdc])).toThrow(/Missing balance/);
+    const result = rebalancer.evaluate('agent', [
+      usdc,
+      { tokenSymbol: 'KITE', tokenAddress: targetAllocations[1].tokenAddress, balance: 1_000_000_000_000_000_000n, priceUsdAtomic: 1_000_000n, decimals: 18 },
+      { tokenSymbol: 'WETH', tokenAddress: targetAllocations[2].tokenAddress, balance: 1_000_000_000_000_000_000n, priceUsdAtomic: 1_000_000n, decimals: 18 },
+    ]);
+    expect(result.instructions.find((i) => i.tokenSymbol === 'USDC')?.action).toBe('HOLD');
+  });
+
+  it('rejects duplicate target symbols before computing total weight', () => {
+    const a = { tokenSymbol: 'A', tokenAddress: '0x1', targetWeightBps: 4000, minReserveAmount: 0n, maxSlippageBps: 50 };
+    const duplicate = { ...a, tokenSymbol: 'a', targetWeightBps: 3000 };
+    const b = { ...a, tokenSymbol: 'B', tokenAddress: '0x2', targetWeightBps: 3000 };
+    expect(() => new AgentPortfolioRebalancer([a, duplicate, b])).toThrow(/duplicate/i);
+  });
+
+  it('keeps target reserve policy independent of caller-owned objects', () => {
+    const a = { tokenSymbol: 'A', tokenAddress: '0x1', targetWeightBps: 5000, minReserveAmount: 100n, maxSlippageBps: 50 };
+    const b = { tokenSymbol: 'B', tokenAddress: '0x2', targetWeightBps: 5000, minReserveAmount: 0n, maxSlippageBps: 50 };
+    const rebalancer = new AgentPortfolioRebalancer([a, b]);
+    a.minReserveAmount = 0n;
+    rebalancer.getTargetAllocation('A')!.minReserveAmount = 0n;
+    expect(rebalancer.getTargetAllocation('A')!.minReserveAmount).toBe(100n);
   });
 });

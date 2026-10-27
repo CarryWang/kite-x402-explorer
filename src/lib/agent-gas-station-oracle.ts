@@ -105,6 +105,9 @@ export class AgentGasStationOracle {
    * Updates base fee for a network based on recent block feedback.
    */
   public updateBaseFee(network: string, newBaseFeeGwei: number): void {
+    if (!Number.isSafeInteger(newBaseFeeGwei)) {
+      throw new Error('Base fee must be a finite safe integer in Gwei');
+    }
     if (newBaseFeeGwei < 1) {
       throw new Error('Base fee cannot be lower than 1 Gwei');
     }

@@ -1,9 +1,12 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from './vitest-compat.js';
 import {
-  createEscrowContract,
-  openEscrowDispute,
+  createEscrowContract as createEscrowContractVerified,
+  openEscrowDispute as openEscrowDisputeVerified,
   castArbitrationVote,
 } from '../src/lib/autonomous-escrow-arbitration';
+
+const createEscrowContract = (params: Parameters<typeof createEscrowContractVerified>[0]) => createEscrowContractVerified(params, () => true);
+const openEscrowDispute = (escrow: Parameters<typeof openEscrowDisputeVerified>[0], params: Parameters<typeof openEscrowDisputeVerified>[1]) => openEscrowDisputeVerified(escrow, params, () => true);
 
 describe('autonomous-escrow-arbitration', () => {
   const buyer = '0x1111111111111111111111111111111111111111' as const;
@@ -12,6 +15,26 @@ describe('autonomous-escrow-arbitration', () => {
   const arbiter2 = '0x4444444444444444444444444444444444444444' as const;
   const arbiter3 = '0x5555555555555555555555555555555555555555' as const;
   const taskSpec = '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890' as const;
+
+  it('rejects duplicate arbiters that make quorum impossible', () => {
+    expect(() => createEscrowContract({ buyer, provider, arbiters: [arbiter1, arbiter1], escrowAmountWei: 100n, taskSpecHash: taskSpec })).toThrow(/duplicate|unique/i);
+  });
+
+  it('requires a verified vote and matching dispute', () => {
+    const escrow = createEscrowContract({ buyer, provider, arbiters: [arbiter1], escrowAmountWei: 100n, taskSpecHash: taskSpec });
+    const { escrow: disputed, dispute } = openEscrowDispute(escrow, { initiator: buyer, disputeReason: 'failure', evidenceHash: taskSpec });
+    expect(() => castArbitrationVote(disputed, dispute, arbiter1, 'refund_to_buyer')).toThrow(/Verified/i);
+    expect(() => castArbitrationVote(disputed, { ...dispute, escrowId: 'other' }, arbiter1, 'refund_to_buyer', () => true)).toThrow(/match/i);
+  });
+
+  it('does not call an escrow funded without verified funding', () => {
+    expect(() => createEscrowContractVerified({ buyer, provider, arbiters: [arbiter1], escrowAmountWei: 100n, taskSpecHash: taskSpec })).toThrow(/fund|verif/i);
+  });
+
+  it('rejects a dispute initiator whose identity was not verified', () => {
+    const escrow = createEscrowContract({ buyer, provider, arbiters: [arbiter1], escrowAmountWei: 100n, taskSpecHash: taskSpec });
+    expect(() => openEscrowDisputeVerified(escrow, { initiator: buyer, disputeReason: 'failure', evidenceHash: taskSpec })).toThrow(/initiator|verif/i);
+  });
 
   it('creates an arbitrated escrow with quorum threshold', () => {
     const escrow = createEscrowContract({
@@ -52,11 +75,11 @@ describe('autonomous-escrow-arbitration', () => {
     expect(dispute.disputeId).toMatch(/^disp-[a-f0-9]{12}$/);
 
     // 1st vote: arbiter1 votes refund_to_buyer
-    const vote1 = castArbitrationVote(disputedEscrow, dispute, arbiter1, 'refund_to_buyer');
+    const vote1 = castArbitrationVote(disputedEscrow, dispute, arbiter1, 'refund_to_buyer', () => true);
     expect(vote1.resolution).toBeUndefined();
 
     // 2nd vote: arbiter2 votes refund_to_buyer -> reaches threshold of 2!
-    const vote2 = castArbitrationVote(disputedEscrow, dispute, arbiter2, 'refund_to_buyer');
+    const vote2 = castArbitrationVote(disputedEscrow, dispute, arbiter2, 'refund_to_buyer', () => true);
     expect(vote2.resolution).toBe('refund_to_buyer');
     expect(vote2.dispute.resolvedVerdict).toBe('refund_to_buyer');
   });

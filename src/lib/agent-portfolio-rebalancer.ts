@@ -45,11 +45,15 @@ export class AgentPortfolioRebalancer {
   constructor(targetAllocations: TokenAllocation[], rebalanceThresholdBps: number = 200) {
     let totalWeight = 0;
     for (const alloc of targetAllocations) {
+      const symbol = alloc.tokenSymbol.toUpperCase();
+      if (this.allocations.has(symbol)) {
+        throw new Error(`Duplicate target allocation for ${symbol}`);
+      }
       if (alloc.targetWeightBps < 0) {
         throw new Error(`Target weight cannot be negative for ${alloc.tokenSymbol}`);
       }
       totalWeight += alloc.targetWeightBps;
-      this.allocations.set(alloc.tokenSymbol.toUpperCase(), alloc);
+      this.allocations.set(symbol, { ...alloc });
     }
 
     if (totalWeight !== 10000) {
@@ -66,6 +70,22 @@ export class AgentPortfolioRebalancer {
     agentAddress: string,
     balances: PortfolioAssetBalance[]
   ): RebalanceEvaluationResult {
+    const supplied = new Set<string>();
+    for (const asset of balances) {
+      const symbol = asset.tokenSymbol.toUpperCase();
+      if (supplied.has(symbol)) throw new Error(`Duplicate balance for ${symbol}`);
+      supplied.add(symbol);
+      const allocation = this.allocations.get(symbol);
+      if (allocation && allocation.tokenAddress.toLowerCase() !== asset.tokenAddress.toLowerCase()) {
+        throw new Error(`Token address mismatch for ${symbol}`);
+      }
+      if (asset.balance < 0n || asset.priceUsdAtomic <= 0n || !Number.isInteger(asset.decimals) || asset.decimals < 0) {
+        throw new Error(`Invalid balance or price for ${symbol}`);
+      }
+    }
+    for (const symbol of this.allocations.keys()) {
+      if (!supplied.has(symbol)) throw new Error(`Missing balance for ${symbol}`);
+    }
     let totalPortfolioValueUsd = 0n;
 
     const parsedAssets = balances.map((asset) => {
@@ -106,24 +126,27 @@ export class AgentPortfolioRebalancer {
       const weightDeltaBps = Math.abs(currentWeightBps - targetWeightBps);
 
       const targetUsdValue = (totalPortfolioValueUsd * BigInt(targetWeightBps)) / 10000n;
-      const deltaUsdValue = asset.usdValue > targetUsdValue 
-        ? asset.usdValue - targetUsdValue 
+      const deltaUsdValue = asset.usdValue > targetUsdValue
+        ? asset.usdValue - targetUsdValue
         : targetUsdValue - asset.usdValue;
 
       const divisor = 10n ** BigInt(asset.decimals);
-      const deltaTokens = asset.priceUsdAtomic > 0n 
-        ? (deltaUsdValue * divisor) / asset.priceUsdAtomic 
+      const deltaTokens = asset.priceUsdAtomic > 0n
+        ? (deltaUsdValue * divisor) / asset.priceUsdAtomic
         : 0n;
 
       if (weightDeltaBps >= this.rebalanceThresholdBps) {
         shouldRebalance = true;
         if (currentWeightBps > targetWeightBps) {
+          const sellable = asset.balance > allocation.minReserveAmount
+            ? asset.balance - allocation.minReserveAmount : 0n;
+          const sellAmount = deltaTokens < sellable ? deltaTokens : sellable;
           instructions.push({
-            action: 'SELL',
+            action: sellAmount > 0n ? 'SELL' : 'HOLD',
             tokenSymbol: asset.tokenSymbol,
             tokenAddress: asset.tokenAddress,
-            amountAtomic: deltaTokens,
-            approxUsdValue: deltaUsdValue,
+            amountAtomic: sellAmount,
+            approxUsdValue: (sellAmount * asset.priceUsdAtomic) / divisor,
             reason: `Weight ${currentWeightBps} bps exceeds target ${targetWeightBps} bps by ${weightDeltaBps} bps`,
           });
         } else {
@@ -159,6 +182,7 @@ export class AgentPortfolioRebalancer {
   }
 
   public getTargetAllocation(tokenSymbol: string): TokenAllocation | undefined {
-    return this.allocations.get(tokenSymbol.toUpperCase());
+    const allocation = this.allocations.get(tokenSymbol.toUpperCase());
+    return allocation ? { ...allocation } : undefined;
   }
 }

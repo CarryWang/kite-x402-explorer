@@ -36,6 +36,14 @@ export class MerchantFeeTierEngine {
 
   constructor(customTiers?: FeeTier[]) {
     this.tiers = [...(customTiers || DEFAULT_FEE_TIERS)].sort((a, b) => a.minVolumeUsd - b.minVolumeUsd);
+    if (this.tiers.length === 0 || this.tiers[0].minVolumeUsd !== 0 || this.tiers.some((tier) =>
+      !Number.isFinite(tier.minVolumeUsd) || tier.minVolumeUsd < 0 ||
+      !Number.isFinite(tier.baseFeeBps) || tier.baseFeeBps < 0 ||
+      !Number.isFinite(tier.rebatePercent) || tier.rebatePercent < 0 || tier.rebatePercent > 100 ||
+      !Number.isFinite(tier.maxFeeCapUsd) || tier.maxFeeCapUsd < 0
+    )) {
+      throw new Error('Invalid fee tier configuration');
+    }
   }
 
   public getTierForVolume(volumeUsd: number): FeeTier {
@@ -60,12 +68,18 @@ export class MerchantFeeTierEngine {
   }
 
   public calculateFee(volumeUsd: number, transactionAmountUsd: number): FeeCalculationResult {
+    if (!Number.isFinite(volumeUsd) || !Number.isFinite(transactionAmountUsd)) {
+      throw new Error('Volume and transaction amount must be finite');
+    }
+    if (volumeUsd < 0 || transactionAmountUsd < 0) {
+      throw new Error('Volume and transaction amount must be non-negative');
+    }
     const tier = this.getTierForVolume(volumeUsd);
     const nextTier = this.getNextTier(volumeUsd);
     const volumeToNextTierUsd = nextTier ? Math.max(0, nextTier.minVolumeUsd - volumeUsd) : 0;
 
-    let rawFee = (transactionAmountUsd * tier.baseFeeBps) / 10000;
-    const feeAmountUsd = Math.min(rawFee, tier.maxFeeCapUsd);
+    const rawFee = (transactionAmountUsd * tier.baseFeeBps) / 10000;
+    const feeAmountUsd = Math.min(rawFee, tier.maxFeeCapUsd, transactionAmountUsd);
     const rebateAmountUsd = (feeAmountUsd * tier.rebatePercent) / 100;
     const effectiveFee = feeAmountUsd - rebateAmountUsd;
     const netSettlementUsd = transactionAmountUsd - effectiveFee;

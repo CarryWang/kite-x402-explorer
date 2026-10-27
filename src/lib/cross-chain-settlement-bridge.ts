@@ -42,10 +42,12 @@ export function deriveBridgeIntentId(params: {
   destinationRecipient: `0x${string}`;
   nonce: bigint;
   createdAt: number;
+  sourceToken?: `0x${string}`;
+  sourceAmountWei?: bigint;
 }): string {
   const hash = keccak256(
     stringToHex(
-      `bridge:${params.sourceChainId}:${params.destinationChainId}:${params.destinationRecipient.toLowerCase()}:${params.nonce}:${params.createdAt}`,
+      `bridge:${params.sourceChainId}:${params.sourceToken?.toLowerCase() ?? ''}:${params.sourceAmountWei ?? ''}:${params.destinationChainId}:${params.destinationRecipient.toLowerCase()}:${params.nonce}:${params.createdAt}`,
     ),
   );
   return `intent-${hash.slice(2, 14)}`;
@@ -65,6 +67,9 @@ export function calculateBridgeRouteQuote(params: {
   }
 
   const feeBps = params.feeBps ?? DEFAULT_BRIDGE_FEE_BPS;
+  if (!Number.isInteger(feeBps) || feeBps < 0 || feeBps > BPS_DENOMINATOR) {
+    throw new Error('Bridge fee bps must be between 0 and 10000');
+  }
   const bridgeFeeWei = (params.sourceAmountWei * BigInt(feeBps)) / BigInt(BPS_DENOMINATOR);
   const estimatedOutputWei = params.sourceAmountWei - bridgeFeeWei;
 
@@ -109,7 +114,7 @@ export function createBridgeIntent(params: {
 
   const destinationChainId = params.destinationChainId ?? KITE_TESTNET_CHAIN_ID;
   const createdAt = params.timestamp ?? Date.now();
-  const nonce = params.nonce ?? BigInt(Math.floor(Math.random() * 1_000_000));
+  const nonce = params.nonce ?? BigInt(`0x${Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) => byte.toString(16).padStart(2, '0')).join('')}`);
   const ttl = params.ttlSeconds ?? 1800; // 30 minutes
   const expiryTimestamp = createdAt + ttl * 1000;
 
@@ -120,6 +125,9 @@ export function createBridgeIntent(params: {
   });
 
   const slippageBps = params.slippageBps ?? 50; // 0.5% max slippage
+  if (!Number.isInteger(slippageBps) || slippageBps < 0 || slippageBps > BPS_DENOMINATOR) {
+    throw new Error('Slippage bps must be between 0 and 10000');
+  }
   const minDestinationAmountWei =
     (quote.estimatedOutputWei * BigInt(BPS_DENOMINATOR - slippageBps)) / BigInt(BPS_DENOMINATOR);
 
@@ -129,6 +137,8 @@ export function createBridgeIntent(params: {
     destinationRecipient: params.destinationRecipient,
     nonce,
     createdAt,
+    sourceToken: params.sourceToken,
+    sourceAmountWei: params.sourceAmountWei,
   });
 
   return {
@@ -154,8 +164,12 @@ export function attestBridgeFulfillment(
   params: {
     relayerAddress: `0x${string}`;
     destinationTxHash: `0x${string}`;
+    destinationChainId?: number;
+    destinationRecipient?: `0x${string}`;
+    destinationAmountWei?: bigint;
     timestamp?: number;
   },
+  verifyFulfillment?: (intent: CrossChainBridgeIntent, proof: typeof params) => boolean,
 ): CrossChainBridgeIntent {
   if (intent.status !== 'pending') {
     throw new Error(`Cannot attest intent in state: ${intent.status}`);
@@ -170,6 +184,12 @@ export function attestBridgeFulfillment(
       ...intent,
       status: 'expired',
     };
+  }
+  if (params.destinationChainId !== intent.destinationChainId || params.destinationRecipient?.toLowerCase() !== intent.destinationRecipient.toLowerCase() || params.destinationAmountWei === undefined || params.destinationAmountWei < intent.minDestinationAmountWei || !/^0x[0-9a-fA-F]{64}$/.test(params.destinationTxHash)) {
+    throw new Error('Destination proof does not match bridge intent');
+  }
+  if (!verifyFulfillment?.(intent, params)) {
+    throw new Error('Verified cross-chain fulfillment proof required');
   }
 
   return {

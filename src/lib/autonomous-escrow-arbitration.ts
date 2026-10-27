@@ -54,7 +54,7 @@ export function createEscrowContract(params: {
   taskSpecHash: `0x${string}`;
   timeoutSeconds?: number;
   timestamp?: number;
-}): EscrowContract {
+}, verifyFunding?: (params: { buyer: `0x${string}`; escrowAmountWei: bigint; taskSpecHash: `0x${string}` }) => boolean): EscrowContract {
   if (!isAddress(params.buyer)) {
     throw new Error(`Invalid buyer address: ${params.buyer}`);
   }
@@ -69,8 +69,14 @@ export function createEscrowContract(params: {
       throw new Error(`Invalid arbiter address: ${arb}`);
     }
   }
+  if (new Set(params.arbiters.map((arb) => arb.toLowerCase())).size !== params.arbiters.length) {
+    throw new Error('Duplicate arbiters are not allowed');
+  }
   if (params.escrowAmountWei <= 0n) {
     throw new Error('Escrow amount must be positive');
+  }
+  if (!verifyFunding?.(params)) {
+    throw new Error('Verified escrow funding required');
   }
 
   const threshold = params.thresholdVotes ?? Math.floor(params.arbiters.length / 2) + 1;
@@ -108,6 +114,7 @@ export function openEscrowDispute(
     evidenceHash: `0x${string}`;
     timestamp?: number;
   },
+  verifyInitiator?: (escrow: EscrowContract, initiator: `0x${string}`) => boolean,
 ): { escrow: EscrowContract; dispute: DisputeRecord } {
   if (escrow.status !== 'funded') {
     throw new Error(`Cannot dispute escrow in status: ${escrow.status}`);
@@ -118,6 +125,9 @@ export function openEscrowDispute(
 
   if (!isParty) {
     throw new Error('Only buyer or provider can initiate an escrow dispute');
+  }
+  if (!verifyInitiator?.(escrow, params.initiator)) {
+    throw new Error('Verified dispute initiator required');
   }
 
   const now = params.timestamp ?? Date.now();
@@ -149,6 +159,7 @@ export function castArbitrationVote(
   dispute: DisputeRecord,
   arbiter: `0x${string}`,
   verdict: VoteVerdict,
+  verifyVote?: (escrow: EscrowContract, dispute: DisputeRecord, arbiter: `0x${string}`, verdict: VoteVerdict) => boolean,
 ): { dispute: DisputeRecord; resolution?: VoteVerdict } {
   if (escrow.status !== 'disputed') {
     throw new Error('Escrow is not in disputed state');
@@ -156,6 +167,15 @@ export function castArbitrationVote(
   const isAuthorized = escrow.arbiters.some((a) => a.toLowerCase() === arbiter.toLowerCase());
   if (!isAuthorized) {
     throw new Error(`Address ${arbiter} is not an authorized arbiter for this escrow`);
+  }
+  if (dispute.escrowId !== escrow.escrowId || dispute.resolvedVerdict) {
+    throw new Error('Dispute does not match escrow or is already resolved');
+  }
+  if (!verifyVote?.(escrow, dispute, arbiter, verdict)) {
+    throw new Error('Verified arbiter vote required');
+  }
+  if (dispute.votes.has(arbiter.toLowerCase())) {
+    throw new Error('Arbiter has already voted');
   }
 
   dispute.votes.set(arbiter.toLowerCase(), verdict);

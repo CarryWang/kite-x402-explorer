@@ -17,6 +17,15 @@ export interface StreamChannel {
 
 export class PaymentStreamingSettlement {
   private streams: Map<string, StreamChannel> = new Map();
+  private claimsInProgress: Set<string> = new Set();
+
+  constructor(
+    private readonly verifyDeposit?: (params: Readonly<{
+      id: string; sender: string; recipient: string; tokenAddress: string;
+      depositAmount: bigint; durationSeconds: number; now?: number;
+    }>) => boolean,
+    private readonly verifyClaim?: (stream: Readonly<StreamChannel>, amount: bigint) => boolean
+  ) {}
 
   public createStream(params: {
     id: string;
@@ -38,6 +47,12 @@ export class PaymentStreamingSettlement {
     }
 
     const startTime = params.now ?? Math.floor(Date.now() / 1000);
+    if (!Number.isSafeInteger(startTime) || !Number.isSafeInteger(params.durationSeconds) || startTime > Math.floor(Date.now() / 1000)) {
+      throw new Error('Stream time must be valid and cannot be in the future');
+    }
+    if (!this.verifyDeposit || !this.verifyDeposit({ ...params })) {
+      throw new Error('Stream deposit verification failed');
+    }
     const stopTime = startTime + params.durationSeconds;
 
     const stream: StreamChannel = {
@@ -53,11 +68,12 @@ export class PaymentStreamingSettlement {
     };
 
     this.streams.set(stream.id, stream);
-    return stream;
+    return { ...stream };
   }
 
   public getStream(id: string): StreamChannel | undefined {
-    return this.streams.get(id);
+    const stream = this.streams.get(id);
+    return stream && { ...stream };
   }
 
   public calculateAvailableBalance(id: string, nowSeconds?: number): bigint {
@@ -65,6 +81,9 @@ export class PaymentStreamingSettlement {
     if (!stream || !stream.isActive) return 0n;
 
     const now = nowSeconds ?? Math.floor(Date.now() / 1000);
+    if (!Number.isSafeInteger(now) || now > Math.floor(Date.now() / 1000)) {
+      throw new Error('Claim time cannot be in the future');
+    }
     if (now <= stream.startTime) return 0n;
 
     if (now >= stream.stopTime) {
@@ -82,19 +101,29 @@ export class PaymentStreamingSettlement {
     const stream = this.streams.get(id);
     if (!stream) throw new Error('Stream not found');
     if (!stream.isActive) throw new Error('Stream is closed');
+    if (this.claimsInProgress.has(id)) throw new Error('Stream claim already in progress');
+    if (amount <= 0n) throw new Error('Claim amount must be positive');
 
     const available = this.calculateAvailableBalance(id, nowSeconds);
     if (amount > available) {
       throw new Error('Insufficient claimable balance');
     }
+    this.claimsInProgress.add(id);
+    try {
+      if (!this.verifyClaim || !this.verifyClaim({ ...stream }, amount)) {
+        throw new Error('Stream claim verification failed');
+      }
 
-    stream.claimedAmount += amount;
-    const remainingBalance = stream.depositAmount - stream.claimedAmount;
+      stream.claimedAmount += amount;
+      const remainingBalance = stream.depositAmount - stream.claimedAmount;
 
-    if (remainingBalance === 0n) {
-      stream.isActive = false;
+      if (remainingBalance === 0n) {
+        stream.isActive = false;
+      }
+
+      return { claimed: amount, remainingBalance };
+    } finally {
+      this.claimsInProgress.delete(id);
     }
-
-    return { claimed: amount, remainingBalance };
   }
 }

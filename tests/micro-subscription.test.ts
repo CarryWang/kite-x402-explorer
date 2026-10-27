@@ -5,7 +5,7 @@ import {
   type SubscriptionRecord,
   validateSubscriptionPlan,
   computePeriodDurationMs,
-  createSubscription,
+  createSubscription as createSubscriptionVerified,
   recordSubscriptionUsage,
   pauseSubscription,
   resumeSubscription,
@@ -19,6 +19,7 @@ import {
 
 const provider = '0x1111111111111111111111111111111111111111' as const;
 const subscriber = '0x2222222222222222222222222222222222222222' as const;
+const createSubscription = (plan: Parameters<typeof createSubscriptionVerified>[0], subscriberAddress: Parameters<typeof createSubscriptionVerified>[1], options?: Parameters<typeof createSubscriptionVerified>[2]) => createSubscriptionVerified(plan, subscriberAddress, { ...options, verifyInitialPayment: () => true });
 
 function createSamplePlan(overrides?: Partial<SubscriptionPlan>): SubscriptionPlan {
   return {
@@ -179,6 +180,7 @@ test('processes successful subscription period renewal and generates settlement 
   const { updatedSubscription, invoice } = processSubscriptionRenewal(sub, plan, {
     paymentSuccess: true,
     currentTimestamp: renewalTime,
+    verifyPayment: () => true,
   });
 
   assert.equal(invoice.status, 'paid');
@@ -229,6 +231,7 @@ test('handles invoice dispute and pauses active subscription', () => {
   const { updatedSubscription, invoice } = processSubscriptionRenewal(sub, plan, {
     paymentSuccess: true,
     currentTimestamp: sub.currentPeriodEnd,
+    verifyPayment: () => true,
   });
 
   const { updatedInvoice, updatedSubscription: disputedSub } = disputeRenewalInvoice(
@@ -262,4 +265,29 @@ test('calculates accurate pro-rated refunds and telemetry summary', () => {
   assert.equal(summary.remainingIncludedUnits, 60);
   assert.equal(summary.effectiveUsageRate, 0.4);
   assert.equal(summary.isRenewalDue, false);
+});
+
+test('renewal rejects canceled and premature subscriptions', () => {
+  const plan = createSamplePlan();
+  const sub = createSubscription(plan, subscriber, { startTimestamp: 1000 });
+  assert.throws(() => processSubscriptionRenewal(cancelSubscription(sub), plan, { paymentSuccess: true, currentTimestamp: sub.currentPeriodEnd }), /active|renew/i);
+  assert.throws(() => processSubscriptionRenewal(sub, plan, { paymentSuccess: true, currentTimestamp: 1001 }), /due|period/i);
+});
+
+test('refund retains wei precision for large balances', () => {
+  const plan = createSamplePlan({ baseCostWei: 100_000_000_000_000_000_003n, maxSpendCapWei: 100_000_000_000_000_000_003n });
+  const sub = createSubscription(plan, subscriber, { startTimestamp: 0 });
+  const now = plan.periodDurationMs / 4;
+  assert.equal(calculateProratedRefund(sub, plan, now), plan.baseCostWei * 3n / 4n);
+});
+
+test('paid renewal requires a trusted payment verifier', () => {
+  const plan = createSamplePlan();
+  const sub = createSubscription(plan, subscriber, { startTimestamp: 1000 });
+  assert.throws(() => processSubscriptionRenewal(sub, plan, { paymentSuccess: true, currentTimestamp: sub.currentPeriodEnd }), /verification/i);
+});
+
+test('positive-cost subscription does not activate without verified initial payment', () => {
+  const plan = createSamplePlan();
+  assert.throws(() => createSubscriptionVerified(plan, subscriber, { startTimestamp: 1000 }), /initial payment|verif/i);
 });

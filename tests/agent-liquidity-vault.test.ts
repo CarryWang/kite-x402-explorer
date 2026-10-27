@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from './vitest-compat.js';
 import {
-  createVaultPool,
+  createVaultPool as createVaultPoolVerified,
   depositToVault,
   authorizeAgentCreditLine,
   drawLiquidityForPayment,
@@ -8,9 +8,24 @@ import {
   calculateVaultHealthMetrics,
 } from '../src/lib/agent-liquidity-vault';
 
+const createVaultPool = (params: Parameters<typeof createVaultPoolVerified>[0]) => createVaultPoolVerified(params, () => true);
+
 describe('agent-liquidity-vault', () => {
   const asset = '0x1234567890123456789012345678901234567890' as const;
   const agent = '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' as const;
+
+  it('rejects credit lines belonging to another pool for draws and repayments', () => {
+    const a = createVaultPool({ name: 'a', settlementAsset: asset, initialDepositWei: 100n });
+    const b = createVaultPool({ name: 'b', settlementAsset: asset, initialDepositWei: 100n });
+    const line = authorizeAgentCreditLine({ pool: a, agentAddress: agent, creditLimitWei: 50n, velocityLimitWei: 50n });
+    expect(() => drawLiquidityForPayment(b, line, 10n)).toThrow(/pool/i);
+    const drawn = drawLiquidityForPayment(a, line, 10n);
+    expect(() => repayLiquidity(b, drawn.creditLine, 10n)).toThrow(/pool/i);
+  });
+
+  it('does not credit an unverified initial deposit', () => {
+    expect(() => createVaultPoolVerified({ name: 'unfunded', settlementAsset: asset, initialDepositWei: 100n })).toThrow(/deposit|verif/i);
+  });
 
   it('creates a vault pool with valid parameters', () => {
     const pool = createVaultPool({
@@ -33,7 +48,7 @@ describe('agent-liquidity-vault', () => {
       initialDepositWei: 500_000_000n,
     });
 
-    pool = depositToVault(pool, 200_000_000n);
+    pool = depositToVault(pool, 200_000_000n, () => true);
     expect(pool.totalDepositedWei).toBe(700_000_000n);
     expect(pool.availableLiquidityWei).toBe(700_000_000n);
   });

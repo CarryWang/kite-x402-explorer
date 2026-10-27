@@ -25,6 +25,13 @@ export class AgentReputationScorer {
   public static calculateReputation(metrics: AgentMetricSnapshot): AgentReputationReport {
     const { totalExecutions, successfulSettlements, failedSettlements, disputeCount, averageLatencyMs } = metrics;
 
+    if (![totalExecutions, successfulSettlements, failedSettlements, disputeCount].every(
+      (value) => Number.isSafeInteger(value) && value >= 0
+    ) || !Number.isFinite(averageLatencyMs) || averageLatencyMs < 0 ||
+      successfulSettlements + failedSettlements > totalExecutions || disputeCount > totalExecutions) {
+      throw new Error('Invalid agent metrics');
+    }
+
     if (totalExecutions === 0) {
       return {
         agentAddress: metrics.agentAddress,
@@ -53,6 +60,7 @@ export class AgentReputationScorer {
     // Dispute penalty (max 15 pts deduction)
     const disputeDeduction = Math.min(15, disputeRate * 3);
     score = Math.max(0, Math.min(100, Math.round(score + 15 - disputeDeduction)));
+    if (totalExecutions < 20) score = Math.min(score, 84);
 
     let tier: AgentReputationReport['tier'] = 'STANDARD';
     let penaltyMultiplier = 1.0;

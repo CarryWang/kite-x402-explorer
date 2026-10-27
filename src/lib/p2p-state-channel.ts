@@ -66,7 +66,7 @@ export function openStateChannel(params: {
   challengePeriodSeconds?: number;
   nonce?: bigint;
   timestamp?: number;
-}): StateChannelConfig {
+}, verifyFunding?: (params: { sender: `0x${string}`; receiver: `0x${string}`; depositAmountWei: bigint }) => boolean): StateChannelConfig {
   if (!isAddress(params.sender)) {
     throw new Error(`Invalid sender address: ${params.sender}`);
   }
@@ -78,6 +78,9 @@ export function openStateChannel(params: {
   }
   if (params.depositAmountWei <= 0n) {
     throw new Error('Deposit amount must be positive');
+  }
+  if (!verifyFunding?.(params)) {
+    throw new Error('Verified channel funding required');
   }
 
   const createdAt = params.timestamp ?? Date.now();
@@ -141,12 +144,19 @@ export function updateChannelState(
 export function generateCloseProof(
   channel: StateChannelConfig,
   finalUpdate: ChannelStateUpdate,
+  verifyState?: (channel: StateChannelConfig, update: ChannelStateUpdate) => boolean,
 ): ChannelCloseProof {
   if (finalUpdate.channelId !== channel.channelId) {
     throw new Error('Update channel ID mismatch');
   }
   if (finalUpdate.transferredAmountWei > channel.depositAmountWei) {
     throw new Error('Update exceeds total channel collateral');
+  }
+  if (finalUpdate.transferredAmountWei < 0n || finalUpdate.nonce !== channel.currentNonce || finalUpdate.transferredAmountWei !== channel.settledAmountWei || finalUpdate.digest !== computeStateDigest(channel.channelId, finalUpdate.nonce, finalUpdate.transferredAmountWei)) {
+    throw new Error('Invalid channel state update');
+  }
+  if (!verifyState?.(channel, finalUpdate)) {
+    throw new Error('Verified signed channel state required');
   }
 
   const paymentToReceiverWei = finalUpdate.transferredAmountWei;

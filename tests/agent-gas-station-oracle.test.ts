@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from './vitest-compat.js';
 import { AgentGasStationOracle } from '../src/lib/agent-gas-station-oracle';
 
 describe('AgentGasStationOracle', () => {
@@ -31,5 +31,11 @@ describe('AgentGasStationOracle', () => {
     const recs = oracle.getRecommendations('kite-mainnet');
     expect(recs[0].baseFeeGwei).toBe(50);
     expect(recs[0].maxFeePerGasGwei).toBe(51);
+  });
+
+  it('rejects nonfinite or fractional base fees before estimating bigint costs', () => {
+    const oracle = new AgentGasStationOracle();
+    expect(() => oracle.updateBaseFee('kite-mainnet', Number.NaN)).toThrow(/integer/);
+    expect(() => oracle.updateBaseFee('kite-mainnet', 1.5)).toThrow(/integer/);
   });
 });

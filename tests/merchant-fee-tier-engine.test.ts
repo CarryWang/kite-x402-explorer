@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from './vitest-compat.js';
 import { MerchantFeeTierEngine, DEFAULT_FEE_TIERS } from '../src/lib/merchant-fee-tier-engine';
 
 describe('MerchantFeeTierEngine', () => {
@@ -28,5 +28,15 @@ describe('MerchantFeeTierEngine', () => {
     const res = engine.calculateFee(8_000, 500);
     expect(res.nextTier?.id).toBe('tier-silver');
     expect(res.volumeToNextTierUsd).toBe(2000);
+  });
+
+  it('rejects invalid settlement amounts', () => {
+    expect(() => engine.calculateFee(0, -1)).toThrow(/non-negative/);
+    expect(() => engine.calculateFee(0, Number.NaN)).toThrow(/finite/);
+  });
+
+  it('rejects custom tiers with negative fees or oversized rebates', () => {
+    expect(() => new MerchantFeeTierEngine([{ id: 'bad', name: 'Bad', minVolumeUsd: 0, baseFeeBps: -1, rebatePercent: 0, maxFeeCapUsd: 1 }])).toThrow(/Invalid fee tier/);
+    expect(() => new MerchantFeeTierEngine([{ id: 'bad', name: 'Bad', minVolumeUsd: 0, baseFeeBps: 100, rebatePercent: 101, maxFeeCapUsd: 1 }])).toThrow(/Invalid fee tier/);
   });
 });

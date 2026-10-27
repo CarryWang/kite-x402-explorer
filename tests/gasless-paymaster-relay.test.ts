@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  createPaymasterPool,
+  createPaymasterPool as createPaymasterPoolVerified,
   depositGasToPool,
   validateSponsorshipEligibility,
   executeSponsoredRelay,
@@ -13,6 +13,7 @@ import {
 const SPONSOR = '0x1111111111111111111111111111111111111111';
 const AGENT = '0x2222222222222222222222222222222222222222';
 const TOKEN = '0x3333333333333333333333333333333333333333';
+const createPaymasterPool = (params: Parameters<typeof createPaymasterPoolVerified>[0]) => createPaymasterPoolVerified(params, () => true);
 
 const DEFAULT_POLICY: PaymasterPolicy = {
   maxGasLimitPerTx: 250_000n,
@@ -41,7 +42,7 @@ test('depositGasToPool increments pool balance', () => {
     policy: DEFAULT_POLICY,
   });
 
-  const updated = depositGasToPool(pool, 5_000n);
+  const updated = depositGasToPool(pool, 5_000n, () => true);
   assert.equal(updated.balanceWei, 6_000n);
 });
 
@@ -97,7 +98,7 @@ test('executeSponsoredRelay deducts balance and issues receipt', () => {
   };
 
   const gasPrice = 2_000_000_000n; // 2 Gwei
-  const { receipt, updatedPool } = executeSponsoredRelay(pool, req, gasPrice);
+  const { receipt, updatedPool } = executeSponsoredRelay(pool, req, gasPrice, () => true);
 
   assert.equal(receipt.status, 'sponsored');
   assert.equal(receipt.totalCostWei, 200_000_000_000_000n);
@@ -123,4 +124,22 @@ test('getPaymasterMetrics aggregates metrics across pools', () => {
   assert.equal(metrics.totalPools, 2);
   assert.equal(metrics.totalBalanceWei, 4_000n);
   assert.equal(metrics.activeSponsors, 2);
+});
+
+test('rejects negative gas cost and unsigned sponsorship', () => {
+  const pool = createPaymasterPool({ poolId: 'secure', sponsor: SPONSOR, initialDepositWei: 1_000_000n, policy: DEFAULT_POLICY });
+  const request: RelayRequest = { agent: AGENT, token: TOKEN, amount: 1n, estimatedGas: -1n, nonce: 'once', signature: 'fake' };
+  assert.equal(validateSponsorshipEligibility(pool, request, 1n).eligible, false);
+  assert.throws(() => executeSponsoredRelay(pool, { ...request, estimatedGas: 1n }, 1n), /verif|sign|auth/i);
+});
+
+test('cannot sponsor the same agent nonce twice', () => {
+  const pool = createPaymasterPool({ poolId: 'replay', sponsor: SPONSOR, initialDepositWei: 1_000_000n, policy: DEFAULT_POLICY });
+  const request: RelayRequest = { agent: AGENT, token: TOKEN, amount: 1n, estimatedGas: 1n, nonce: 'once', signature: 'verified-externally' };
+  const first = executeSponsoredRelay(pool, request, 1n, () => true);
+  assert.throws(() => executeSponsoredRelay(first.updatedPool, request, 1n, () => true), /nonce/i);
+});
+
+test('pool creation requires verified sponsor funding', () => {
+  assert.throws(() => createPaymasterPoolVerified({ poolId: 'unfunded', sponsor: SPONSOR, initialDepositWei: 100n, policy: DEFAULT_POLICY }), /fund|verif/i);
 });

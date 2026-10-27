@@ -144,6 +144,7 @@ export function createSubscription(
     maxRetryAttempts?: number;
     delegatedAuthSignature?: Hex;
     startTimestamp?: number;
+    verifyInitialPayment?: (plan: SubscriptionPlan, subscriber: `0x${string}`) => boolean;
   }
 ): SubscriptionRecord {
   validateSubscriptionPlan(plan);
@@ -153,6 +154,9 @@ export function createSubscription(
   }
   if (subscriber.toLowerCase() === plan.provider.toLowerCase()) {
     throw new Error('Subscriber cannot be identical to provider');
+  }
+  if (plan.baseCostWei > 0n && !options?.verifyInitialPayment?.(plan, subscriber)) {
+    throw new Error('Verified initial payment required before subscription activation');
   }
 
   const now = options?.startTimestamp ?? Date.now();
@@ -326,9 +330,7 @@ export function calculateProratedRefund(
 
   const elapsedMs = now - subscription.currentPeriodStart;
   const totalPeriodMs = subscription.currentPeriodEnd - subscription.currentPeriodStart;
-  const remainingFraction = 1 - elapsedMs / totalPeriodMs;
-
-  const refund = BigInt(Math.floor(Number(plan.baseCostWei) * remainingFraction));
+  const refund = plan.baseCostWei * BigInt(totalPeriodMs - elapsedMs) / BigInt(totalPeriodMs);
   return refund > 0n ? refund : 0n;
 }
 
@@ -390,12 +392,25 @@ export function processSubscriptionRenewal(
     paymentSuccess: boolean;
     currentTimestamp?: number;
     secretKey?: string;
+    verifyPayment?: (subscription: SubscriptionRecord, amountWei: bigint) => boolean;
   }
 ): {
   updatedSubscription: SubscriptionRecord;
   invoice: RenewalInvoice;
 } {
   const now = options.currentTimestamp ?? Date.now();
+  if (subscription.status !== 'active' || !subscription.autoRenew) {
+    throw new Error('Only active auto-renewing subscriptions can renew');
+  }
+  if (now < subscription.currentPeriodEnd) {
+    throw new Error('Subscription renewal is not due');
+  }
+  if (subscription.planId !== plan.planId || subscription.provider.toLowerCase() !== plan.provider.toLowerCase()) {
+    throw new Error('Subscription plan mismatch');
+  }
+  if (options.paymentSuccess && !options.verifyPayment?.(subscription, subscription.periodSpendWei)) {
+    throw new Error('Payment verification required before renewal');
+  }
   const invoiceId = `inv_${subscription.subscriptionId}_${subscription.currentPeriodEnd}`;
   const totalAmountWei = subscription.periodSpendWei;
   const unitsUsed = subscription.periodUnitsConsumed;
@@ -491,5 +506,3 @@ export function disputeRenewalInvoice(
 
   return { updatedInvoice, updatedSubscription };
 }
-
-

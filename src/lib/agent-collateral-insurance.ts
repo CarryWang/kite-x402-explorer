@@ -11,6 +11,7 @@ export interface InsurancePolicy {
   insuredAmountWei: bigint;
   premiumPaidWei: bigint;
   coverageDeadline: number;
+  purchaseNonce: bigint;
   status: PolicyStatus;
   createdAt: number;
 }
@@ -41,9 +42,22 @@ export const BPS_DENOMINATOR = 10_000;
 /**
  * Derives a deterministic policy identifier.
  */
-export function derivePolicyId(buyer: `0x${string}`, provider: `0x${string}`, timestamp: number): string {
-  const hash = keccak256(stringToHex(`policy:${buyer.toLowerCase()}:${provider.toLowerCase()}:${timestamp}`));
-  return `policy-${hash.slice(2, 14)}`;
+export function derivePolicyId(params: {
+  buyerAgent: `0x${string}`;
+  providerAgent: `0x${string}`;
+  targetServiceUrl: string;
+  insuredAmountWei: bigint;
+  premiumPaidWei: bigint;
+  coverageDeadline: number;
+  createdAt: number;
+  purchaseNonce: bigint;
+}): string {
+  const hash = keccak256(stringToHex(JSON.stringify([
+    'policy-v2', params.buyerAgent.toLowerCase(), params.providerAgent.toLowerCase(),
+    params.targetServiceUrl, params.insuredAmountWei.toString(), params.premiumPaidWei.toString(),
+    params.coverageDeadline, params.createdAt, params.purchaseNonce.toString(),
+  ])));
+  return `policy-${hash.slice(2)}`;
 }
 
 /**
@@ -83,8 +97,9 @@ export function createInsurancePolicy(params: {
   insuredAmountWei: bigint;
   providerReputationScore?: number;
   coverageDurationSeconds?: number;
+  purchaseNonce?: bigint;
   timestamp?: number;
-}): InsurancePolicy {
+}, verifyPremiumPayment?: (params: { buyerAgent: `0x${string}`; insuredAmountWei: bigint }, premiumWei: bigint) => boolean): InsurancePolicy {
   if (!isAddress(params.buyerAgent)) {
     throw new Error(`Invalid buyer agent address: ${params.buyerAgent}`);
   }
@@ -97,14 +112,36 @@ export function createInsurancePolicy(params: {
 
   const createdAt = params.timestamp ?? Date.now();
   const duration = params.coverageDurationSeconds ?? 3600; // 1 hour coverage default
+  if (!Number.isSafeInteger(createdAt) || !Number.isSafeInteger(duration) || duration <= 0) {
+    throw new Error('Invalid policy time or coverage duration');
+  }
   const coverageDeadline = createdAt + duration * 1000;
+  if (!Number.isSafeInteger(coverageDeadline)) {
+    throw new Error('Invalid coverage deadline');
+  }
+  const purchaseNonce = params.purchaseNonce ?? BigInt(`0x${Array.from(crypto.getRandomValues(new Uint8Array(16)), byte => byte.toString(16).padStart(2, '0')).join('')}`);
+  if (typeof purchaseNonce !== 'bigint' || purchaseNonce < 0n || purchaseNonce >= 1n << 256n) {
+    throw new Error('Invalid purchase nonce');
+  }
 
   const premiumPaidWei = calculateInsurancePremium({
     insuredAmountWei: params.insuredAmountWei,
     providerReputationScore: params.providerReputationScore,
   });
+  if (!verifyPremiumPayment?.(params, premiumPaidWei)) {
+    throw new Error('Verified premium payment required');
+  }
 
-  const policyId = derivePolicyId(params.buyerAgent, params.providerAgent, createdAt);
+  const policyId = derivePolicyId({
+    buyerAgent: params.buyerAgent,
+    providerAgent: params.providerAgent,
+    targetServiceUrl: params.targetServiceUrl,
+    insuredAmountWei: params.insuredAmountWei,
+    premiumPaidWei,
+    coverageDeadline,
+    createdAt,
+    purchaseNonce,
+  });
 
   return {
     policyId,
@@ -114,6 +151,7 @@ export function createInsurancePolicy(params: {
     insuredAmountWei: params.insuredAmountWei,
     premiumPaidWei,
     coverageDeadline,
+    purchaseNonce,
     status: 'active',
     createdAt,
   };
@@ -130,12 +168,16 @@ export function submitInsuranceClaim(
     failureStatusCode: number;
     timestamp?: number;
   },
+  verifyClaimant?: (policy: InsurancePolicy, claimant: `0x${string}`) => boolean,
 ): { policy: InsurancePolicy; claim: InsuranceClaim } {
   if (policy.status !== 'active') {
     throw new Error(`Cannot submit claim on policy in status: ${policy.status}`);
   }
   if (policy.buyerAgent.toLowerCase() !== params.claimant.toLowerCase()) {
     throw new Error('Only the policyholder buyer can submit a claim');
+  }
+  if (!verifyClaimant?.(policy, params.claimant)) {
+    throw new Error('Verified claimant identity required');
   }
 
   const now = params.timestamp ?? Date.now();
@@ -170,9 +212,16 @@ export function disburseInsuranceClaim(
   claim: InsuranceClaim,
   policy: InsurancePolicy,
   timestamp: number = Date.now(),
+  verifyDisbursement?: (claim: InsuranceClaim, policy: InsurancePolicy) => boolean,
 ): InsuranceClaim {
   if (claim.status !== 'pending') {
     throw new Error(`Cannot disburse claim in status: ${claim.status}`);
+  }
+  if (claim.policyId !== policy.policyId || claim.claimant.toLowerCase() !== policy.buyerAgent.toLowerCase() || policy.status !== 'claimed') {
+    throw new Error('Claim policy mismatch or policy not claimed');
+  }
+  if (!verifyDisbursement?.(claim, policy)) {
+    throw new Error('Verified adjudication and payout required before disbursement');
   }
 
   return {

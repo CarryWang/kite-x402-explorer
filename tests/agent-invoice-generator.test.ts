@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from './vitest-compat.js';
 import { AgentInvoiceGenerator } from '../src/lib/agent-invoice-generator';
 
 describe('AgentInvoiceGenerator', () => {
@@ -22,7 +22,7 @@ describe('AgentInvoiceGenerator', () => {
     expect(invoice.subtotalAtomic).toBe(1_200_000n);
     expect(invoice.discountAtomic).toBe(100_000n);
     expect(invoice.totalAmountAtomic).toBe(1_100_000n);
-    expect(invoice.invoiceChecksum).toMatch(/^0x[0-9a-f]{8}$/);
+    expect(invoice.invoiceChecksum).toMatch(/^0x[0-9a-f]{64}$/);
   });
 
   it('settles an issued invoice successfully', () => {
@@ -35,7 +35,7 @@ describe('AgentInvoiceGenerator', () => {
       items: [{ id: 'item-1', description: 'Embedding vector lookup', quantity: 1, unitPriceAtomic: 10_000n }],
     });
 
-    const settled = generator.markSettled(invoice.invoiceId, '0x9999abcdef');
+    const settled = generator.markSettled(invoice.invoiceId, '0x9999abcdef', () => true);
     expect(settled.status).toBe('SETTLED');
     expect(settled.settlementTxHash).toBe('0x9999abcdef');
     expect(settled.settledAt).toBeDefined();
@@ -53,7 +53,39 @@ describe('AgentInvoiceGenerator', () => {
     });
 
     expect(() => {
-      generator.markSettled(invoice.invoiceId, '0xtx');
+      generator.markSettled(invoice.invoiceId, '0xtx', () => true);
     }).toThrow(/expired/);
+  });
+
+  it('requires verified settlement and prevents replaying a transaction', () => {
+    const generator = new AgentInvoiceGenerator();
+    const params = { issuerAgent: 'issuer', payerAgent: 'payer', recipientAddress: 'recipient', network: 'kite-mainnet', items: [{ id: 'item', description: 'service', quantity: 1, unitPriceAtomic: 10n }] };
+    const first = generator.createInvoice(params);
+    const second = generator.createInvoice(params);
+    expect(() => generator.markSettled(first.invoiceId, 'fake')).toThrow(/verification/);
+    expect(() => generator.markSettled(first.invoiceId, 'fake', () => false)).toThrow(/verification/);
+    generator.markSettled(first.invoiceId, 'real', () => true);
+    expect(() => generator.markSettled(second.invoiceId, 'real', () => true)).toThrow(/already used/);
+    expect(() => generator.markSettled(first.invoiceId, 'other', () => true)).toThrow(/SETTLED/);
+  });
+
+  it('does not expose mutable stored invoices through create, get, or list', () => {
+    const generator = new AgentInvoiceGenerator();
+    const invoice = generator.createInvoice({
+      issuerAgent: 'issuer', payerAgent: 'payer', recipientAddress: 'recipient',
+      network: 'kite-mainnet', items: [{ id: 'item', description: 'service', quantity: 1, unitPriceAtomic: 10n }],
+    });
+    invoice.status = 'SETTLED';
+    invoice.recipientAddress = 'attacker';
+    invoice.lineItems[0].unitPriceAtomic = 0n;
+    const fetched = generator.getInvoice(invoice.invoiceId)!;
+    expect(fetched.status).toBe('ISSUED');
+    expect(fetched.recipientAddress).toBe('recipient');
+    expect(fetched.lineItems[0].unitPriceAtomic).toBe(10n);
+    fetched.lineItems[0].unitPriceAtomic = 0n;
+    const listed = generator.listByAgent('issuer')[0];
+    expect(listed.lineItems[0].unitPriceAtomic).toBe(10n);
+    listed.status = 'SETTLED';
+    expect(generator.getInvoice(invoice.invoiceId)?.status).toBe('ISSUED');
   });
 });

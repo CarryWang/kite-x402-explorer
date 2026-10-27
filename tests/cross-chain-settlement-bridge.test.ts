@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from './vitest-compat.js';
 import {
   createBridgeIntent,
   calculateBridgeRouteQuote,
@@ -11,6 +11,16 @@ describe('cross-chain-settlement-bridge', () => {
   const recipient = '0x1111111111111111111111111111111111111111' as const;
   const relayer = '0x2222222222222222222222222222222222222222' as const;
   const txHash = '0xabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd' as const;
+
+  it('rejects unverified settlement facts', () => {
+    const intent = createBridgeIntent({ sourceChainId: 1, sourceToken: token, sourceAmountWei: 100n, destinationRecipient: recipient, nonce: 1n, timestamp: 1000 });
+    expect(() => attestBridgeFulfillment(intent, { relayerAddress: relayer, destinationTxHash: txHash, timestamp: 2000 })).toThrow(/verif|proof/i);
+  });
+
+  it('rejects fee and slippage percentages that invert settlement amounts', () => {
+    expect(() => calculateBridgeRouteQuote({ sourceChainId: 1, destinationChainId: KITE_TESTNET_CHAIN_ID, sourceAmountWei: 100n, feeBps: 20_000 })).toThrow(/fee/i);
+    expect(() => createBridgeIntent({ sourceChainId: 1, sourceToken: token, sourceAmountWei: 100n, destinationRecipient: recipient, slippageBps: 20_000 })).toThrow(/slippage/i);
+  });
 
   it('calculates bridge quotes with accurate fee deduction', () => {
     const quote = calculateBridgeRouteQuote({
@@ -55,8 +65,11 @@ describe('cross-chain-settlement-bridge', () => {
     const settled = attestBridgeFulfillment(intent, {
       relayerAddress: relayer,
       destinationTxHash: txHash,
+      destinationChainId: intent.destinationChainId,
+      destinationRecipient: recipient,
+      destinationAmountWei: intent.minDestinationAmountWei,
       timestamp: 2000,
-    });
+    }, () => true);
 
     expect(settled.status).toBe('settled');
     expect(settled.relayer).toBe(relayer);

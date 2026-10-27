@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from './vitest-compat.js';
 import { AgentSubgraphIndexer, IndexedPaymentEvent } from '../src/lib/agent-subgraph-indexer';
 
 describe('AgentSubgraphIndexer', () => {
@@ -66,5 +66,14 @@ describe('AgentSubgraphIndexer', () => {
     expect(metrics.totalSettledVolumeAtomic).toBe(15_000_000n);
     expect(metrics.uniquePayersCount).toBe(2);
     expect(metrics.uniqueRecipientsCount).toBe(1);
+  });
+
+  it('removes stale address index entries when an event is replaced', () => {
+    const indexer = new AgentSubgraphIndexer();
+    indexer.ingest(sampleEvents[0]);
+    indexer.ingest({ ...sampleEvents[0], payerAddress: '0xBob', recipientAddress: '0xOther' });
+    expect(indexer.query({ payerAddress: '0xAlice' }).length).toBe(0);
+    expect(indexer.query({ recipientAddress: '0xServer' }).length).toBe(0);
+    expect(indexer.query({ payerAddress: '0xBob' }).length).toBe(1);
   });
 });
