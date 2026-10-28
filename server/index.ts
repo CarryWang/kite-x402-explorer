@@ -10,14 +10,23 @@ dotenv.config();
 
 const app = express();
 const port = Number(process.env.PORT || 3001);
-const registrySource = process.env.REGISTRY_SOURCE || 'demo';
-if (!['demo', 'official'].includes(registrySource)) throw new Error('REGISTRY_SOURCE must be demo or official');
-const officialRegistry = new OfficialRegistry({commit: process.env.REGISTRY_COMMIT});
 
 app.use(cors({
   exposedHeaders: ['PAYMENT-REQUIRED', 'PAYMENT-RESPONSE', 'payment-required', 'payment-response'],
 }));
 app.use(express.json());
+
+const registrySource = process.env.REGISTRY_SOURCE || 'demo';
+if (!['demo', 'official'].includes(registrySource)) throw new Error('REGISTRY_SOURCE must be demo or official');
+const officialRegistry = new OfficialRegistry({commit: process.env.REGISTRY_COMMIT});
+app.use('/api/probe', (_req, res, next) => {
+  if (registrySource === 'official') {res.status(503).json({status:'unavailable',source:'official',error:'Live registry probing is not configured'});return;}
+  next();
+});
+app.use('/api/mock-x402', (_req, res, next) => {
+  if (registrySource === 'official') {res.status(409).json({error:'The demo payment simulator is disabled for the official directory'});return;}
+  next();
+});
 
 // Health status
 app.get('/api/health', (_req, res) => {
@@ -57,10 +66,6 @@ app.post('/api/validate-manifest', (req, res) => {
 
 // Dedicated health probe endpoint for service monitoring
 app.get('/api/probe/:serviceName', (req: Request, res: Response) => {
-  if (registrySource === 'official') {
-    res.status(503).json({status:'unavailable',source:'official',error:'Live registry probing is not configured'});
-    return;
-  }
   const { serviceName } = req.params;
   const srv = INITIAL_SERVICES.find((s) => s.name === serviceName);
   if (!srv) {
@@ -87,10 +92,6 @@ app.get('/api/probe/:serviceName', (req: Request, res: Response) => {
 
 // Local mock x402 simulator endpoint for end-to-end sandbox testing
 app.all(['/api/mock-x402/:serviceName', '/api/mock-x402/:serviceName/*'], (req: Request, res: Response) => {
-  if (registrySource === 'official') {
-    res.status(409).json({error:'The demo payment simulator is disabled for the official directory'});
-    return;
-  }
   const { serviceName } = req.params;
   const srv = INITIAL_SERVICES.find((s) => s.name === serviceName) || INITIAL_SERVICES[0];
   const isTestnet = srv.network === 'eip155:2368';
