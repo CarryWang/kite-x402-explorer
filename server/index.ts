@@ -1,3 +1,4 @@
+import { requestPublic } from './outbound.js';
 import express, { type Request, type Response } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
@@ -9,6 +10,12 @@ dotenv.config();
 
 const app = express();
 const port = Number(process.env.PORT || 3001);
+const facilitator = 'https://facilitator.pieverse.io/v2';
+const allowedOrigins = [...new Set([
+  ...INITIAL_SERVICES.flatMap(service => service.base_url ? [new URL(service.base_url).origin] : []),
+  new URL(facilitator).origin,
+  ...(process.env.OUTBOUND_ALLOWED_ORIGINS || '').split(',').filter(Boolean).map(value => new URL(value.trim()).origin),
+])];
 
 app.use(cors({
   exposedHeaders: ['PAYMENT-REQUIRED', 'PAYMENT-RESPONSE', 'payment-required', 'payment-response'],
@@ -45,29 +52,29 @@ app.post('/api/validate-manifest', (req, res) => {
 });
 
 // Dedicated health probe endpoint for service monitoring
-app.get('/api/probe/:serviceName', (req: Request, res: Response) => {
-  const { serviceName } = req.params;
-  const srv = INITIAL_SERVICES.find((s) => s.name === serviceName);
-  if (!srv) {
-    res.status(404).json({ error: 'Service not found in registry' });
-    return;
+app.get('/api/probe/:serviceName', async (req: Request, res: Response) => {
+  const srv = INITIAL_SERVICES.find(service => service.name === req.params.serviceName);
+  if (!srv?.base_url) { res.status(404).json({error: 'Service has no registered probe target'}); return; }
+  try {
+    const [health, supported] = await Promise.all([
+      requestPublic(new URL('/healthz', srv.base_url).href, {allowedOrigins}),
+      requestPublic(facilitator + '/supported', {allowedOrigins}),
+    ]);
+    const data = JSON.parse(health.body.toString());
+    const capabilities = JSON.parse(supported.body.toString());
+    const expectedAsset = srv.network === 'eip155:2368'
+      ? '0x38129cf4CE5E183eFF248F42A7D345Bb1B47621A' : '0x7aB6f3ed87C42eF0aDb67Ed95090f8bF5240149e';
+    const networkMatched = data.network === srv.network;
+    const assetMatched = typeof data.asset === 'string' && data.asset.toLowerCase() === expectedAsset.toLowerCase();
+    const facilitatorReachable = supported.status === 200 && Array.isArray(capabilities.kinds) && capabilities.kinds.some(
+      (kind: {network?:string; scheme?:string; x402Version?:number}) => kind.network === srv.network && kind.scheme === 'exact' && kind.x402Version === 2);
+    res.status(health.status >= 200 && health.status < 300 ? 200 : 502).json({source:'live', service:srv.name,
+      httpStatus:health.status, network:data.network, asset:data.asset, networkMatched, assetMatched, facilitatorReachable,
+      endpoint:new URL('/healthz',srv.base_url).href, timestamp:new Date().toISOString()});
+  } catch {
+    res.status(502).json({source:'live', service:srv.name, status:'unavailable', networkMatched:false,
+      assetMatched:false, facilitatorReachable:false, timestamp:new Date().toISOString()});
   }
-  const isTestnet = srv.network === 'eip155:2368';
-  res.json({
-    status: 'ok',
-    service: srv.name,
-    displayName: srv.display_name,
-    httpStatus: 200,
-    network: srv.network,
-    networkMatched: true,
-    asset: isTestnet
-      ? '0x38129cf4CE5E183eFF248F42A7D345Bb1B47621A'
-      : '0x7aB6f3ed87C42eF0aDb67Ed95090f8bF5240149e',
-    assetMatched: true,
-    facilitator: 'https://facilitator.pieverse.io/v2',
-    facilitatorReachable: true,
-    timestamp: new Date().toISOString(),
-  });
 });
 
 // Local mock x402 simulator endpoint for end-to-end sandbox testing
@@ -159,30 +166,13 @@ app.all('/api/proxy', async (req: Request, res: Response) => {
     }
 
     const hasBody = !['GET', 'HEAD'].includes(req.method);
-    const upstreamRes = await fetch(targetUrl, {
-      method: req.method,
-      headers,
-      body: hasBody ? JSON.stringify(req.body) : undefined,
-    });
-
-    // Mirror payment headers
-    const reqHeader = upstreamRes.headers.get('payment-required');
-    if (reqHeader) {
-      res.setHeader('PAYMENT-REQUIRED', reqHeader);
-      res.setHeader('payment-required', reqHeader);
-    }
-    const resHeader = upstreamRes.headers.get('payment-response');
-    if (resHeader) {
-      res.setHeader('PAYMENT-RESPONSE', resHeader);
-      res.setHeader('payment-response', resHeader);
-    }
-
-    const data = await upstreamRes.text();
-    res.status(upstreamRes.status);
-    res.setHeader('Content-Type', upstreamRes.headers.get('content-type') || 'application/json');
-    res.send(data);
+    const upstream = await requestPublic(targetUrl, {allowedOrigins, method:req.method,
+      headers:{...headers, ...(hasBody ? {'Content-Type':'application/json'} : {})},
+      ...(hasBody ? {body:JSON.stringify(req.body)} : {})});
+    for (const [name,value] of Object.entries(upstream.headers)) res.setHeader(name,value);
+    res.status(upstream.status).send(upstream.body);
   } catch (err) {
-    res.status(502).json({ error: 'Failed to proxy request', details: String(err) });
+    res.status(502).json({ error: 'Failed to proxy request', details: err instanceof Error ? err.message : 'Outbound request failed' });
   }
 });
 
