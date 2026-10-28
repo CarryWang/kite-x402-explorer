@@ -10,6 +10,27 @@
 
 The bundled service directory and `/api/mock-x402` route are demonstration data. Their addresses and availability labels are not verified payment destinations. The mock route does not contact a facilitator or settle a transaction; generated proof records are marked `simulated`. The escrow, channel, dispute, revenue-share, reputation, semantic-cache, compute-router, data-attestation, and session-allowance modules are local prototypes rather than deployed contracts or services. Credit, attestation discounts, cache discounts, and delegated spend approval require trusted external verification before production use.
 
+### Directory source
+
+The default `REGISTRY_SOURCE=demo` serves the bundled examples. Set
+`REGISTRY_SOURCE=official` to read `services/*/service.yaml` from
+`gokite-ai/kite-x402-services`. Optionally set `REGISTRY_COMMIT` to a full
+40-character SHA; otherwise each refresh resolves main and pins every manifest
+to that commit. The API and UI expose source, commit, last successful fetch time,
+staleness and validation errors. The browser loads this API and retries every
+minute; the server refreshes at most every five minutes and coalesces concurrent
+requests. A failed refresh retains the last good process-local snapshot and backs
+off for 30 seconds. An unsuccessful first fetch returns 503 with no demo fallback.
+Snapshots reset on restart. Invalid manifests are excluded with per-file errors;
+transport failures retain the entire previous snapshot. Work is capped at 200
+manifests, four concurrent reads, 64 KiB per manifest and a 12-second deadline.
+
+Official directory entries are registration metadata, not verified payment
+destinations. The payment simulator is disabled in official mode and probes
+report unavailable until live probing is configured. This change does not submit
+payments or verify availability. The official catalog currently contains draft
+entries, so deployments must not interpret catalog membership as readiness.
+
 ### Key Capabilities
 
 1. **Service Directory & Inspection**:

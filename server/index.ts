@@ -4,11 +4,15 @@ import dotenv from 'dotenv';
 import { INITIAL_SERVICES } from '../src/services/sample-services.js';
 import { parseAndValidateManifest } from '../src/services/manifest-loader.js';
 import { buildMockSettlement } from './mock-settlement.js';
+import { OfficialRegistry } from './official-registry.js';
 
 dotenv.config();
 
 const app = express();
 const port = Number(process.env.PORT || 3001);
+const registrySource = process.env.REGISTRY_SOURCE || 'demo';
+if (!['demo', 'official'].includes(registrySource)) throw new Error('REGISTRY_SOURCE must be demo or official');
+const officialRegistry = new OfficialRegistry({commit: process.env.REGISTRY_COMMIT});
 
 app.use(cors({
   exposedHeaders: ['PAYMENT-REQUIRED', 'PAYMENT-RESPONSE', 'payment-required', 'payment-response'],
@@ -26,10 +30,17 @@ app.get('/api/health', (_req, res) => {
 });
 
 // List all registered services
-app.get('/api/services', (_req, res) => {
+app.get('/api/services', async (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (registrySource === 'official') {
+    const snapshot = await officialRegistry.get();
+    res.status(snapshot.registry.commit ? 200 : 503).json({count:snapshot.services.length,...snapshot});
+    return;
+  }
   res.json({
     count: INITIAL_SERVICES.length,
     services: INITIAL_SERVICES,
+    registry: {source: 'demo', commit: null, fetchedAt: null, stale: false},
   });
 });
 
@@ -46,6 +57,10 @@ app.post('/api/validate-manifest', (req, res) => {
 
 // Dedicated health probe endpoint for service monitoring
 app.get('/api/probe/:serviceName', (req: Request, res: Response) => {
+  if (registrySource === 'official') {
+    res.status(503).json({status:'unavailable',source:'official',error:'Live registry probing is not configured'});
+    return;
+  }
   const { serviceName } = req.params;
   const srv = INITIAL_SERVICES.find((s) => s.name === serviceName);
   if (!srv) {
@@ -72,6 +87,10 @@ app.get('/api/probe/:serviceName', (req: Request, res: Response) => {
 
 // Local mock x402 simulator endpoint for end-to-end sandbox testing
 app.all(['/api/mock-x402/:serviceName', '/api/mock-x402/:serviceName/*'], (req: Request, res: Response) => {
+  if (registrySource === 'official') {
+    res.status(409).json({error:'The demo payment simulator is disabled for the official directory'});
+    return;
+  }
   const { serviceName } = req.params;
   const srv = INITIAL_SERVICES.find((s) => s.name === serviceName) || INITIAL_SERVICES[0];
   const isTestnet = srv.network === 'eip155:2368';
