@@ -161,3 +161,7 @@ The batch settlement, bonding escrow, dynamic fee oracle, capability registry, s
 ## 📜 License
 
 Apache-2.0
+
+### Live probes and outbound relay
+
+Health checks request the registered service `/healthz` and the facilitator `/supported`. Missing evidence, network errors and non-success responses do not fall back to simulated health. Demo settlement remains separate. The relay permits registered service origins and operator-configured `OUTBOUND_ALLOWED_ORIGINS` only (comma-separated HTTPS origins). DNS results must all be public and are pinned to the outbound socket. Redirects are refused. Each request has a three-second deadline covering DNS, headers and body, and a 1 MiB response cap. These probes verify advertised readiness, not a funded settlement.
