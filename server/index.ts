@@ -5,6 +5,7 @@ import dotenv from 'dotenv';
 import { INITIAL_SERVICES } from '../src/services/sample-services.js';
 import { parseAndValidateManifest } from '../src/services/manifest-loader.js';
 import { buildMockSettlement } from './mock-settlement.js';
+import { OfficialRegistry } from './official-registry.js';
 
 dotenv.config();
 
@@ -22,6 +23,18 @@ app.use(cors({
 }));
 app.use(express.json());
 
+const registrySource = process.env.REGISTRY_SOURCE || 'demo';
+if (!['demo', 'official'].includes(registrySource)) throw new Error('REGISTRY_SOURCE must be demo or official');
+const officialRegistry = new OfficialRegistry({commit: process.env.REGISTRY_COMMIT});
+app.use('/api/probe', (_req, res, next) => {
+  if (registrySource === 'official') {res.status(503).json({status:'unavailable',source:'official',error:'Live registry probing is not configured'});return;}
+  next();
+});
+app.use('/api/mock-x402', (_req, res, next) => {
+  if (registrySource === 'official') {res.status(409).json({error:'The demo payment simulator is disabled for the official directory'});return;}
+  next();
+});
+
 // Health status
 app.get('/api/health', (_req, res) => {
   res.json({
@@ -33,10 +46,17 @@ app.get('/api/health', (_req, res) => {
 });
 
 // List all registered services
-app.get('/api/services', (_req, res) => {
+app.get('/api/services', async (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (registrySource === 'official') {
+    const snapshot = await officialRegistry.get();
+    res.status(snapshot.registry.commit ? 200 : 503).json({count:snapshot.services.length,...snapshot});
+    return;
+  }
   res.json({
     count: INITIAL_SERVICES.length,
     services: INITIAL_SERVICES,
+    registry: {source: 'demo', commit: null, fetchedAt: null, stale: false},
   });
 });
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Navbar, type NavTab } from './components/common/Navbar.js';
 import { DirectoryView } from './components/directory/DirectoryView.js';
 import { ServiceDetailModal } from './components/directory/ServiceDetailModal.js';
@@ -7,7 +7,7 @@ import { ManifestBuilderView } from './components/builder/ManifestBuilderView.js
 import { TestnetE2ESuite } from './components/e2e/TestnetE2ESuite.js';
 import { DocsView } from './components/docs/DocsView.js';
 import { ProofLogDrawer } from './components/common/ProofLogDrawer.js';
-import { INITIAL_SERVICES } from './services/sample-services.js';
+import { loadDirectory } from './services/directory-client.js';
 import type { ServiceManifest, ServiceEndpoint } from './types/service.js';
 import type { ServiceHealthStatus, HealthAutoRefreshInterval } from './types/health.js';
 import {
@@ -20,7 +20,10 @@ import { getStoredProofs, subscribeToProofs } from './services/proof-logger.js';
 export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<NavTab>('directory');
   const [selectedNetwork, setSelectedNetwork] = useState<'all' | 'testnet' | 'mainnet'>('all');
-  const [services, setServices] = useState<ServiceManifest[]>(INITIAL_SERVICES);
+  const [services, setServices] = useState<ServiceManifest[]>([]);
+  const [directoryNote, setDirectoryNote] = useState('Loading service directory…');
+  const [directorySource, setDirectorySource] = useState<'demo'|'official'|null>(null);
+  const localServices = useRef(new Map<string,ServiceManifest>());
   const [selectedService, setSelectedService] = useState<ServiceManifest | null>(null);
   const [playgroundTarget, setPlaygroundTarget] = useState<{
     service: ServiceManifest;
@@ -35,6 +38,25 @@ export const App: React.FC = () => {
   // Proof logs drawer state
   const [proofCount, setProofCount] = useState<number>(() => getStoredProofs().length);
   const [isProofDrawerOpen, setIsProofDrawerOpen] = useState<boolean>(false);
+
+  useEffect(() => {
+    let active = true;
+    const refresh = async () => {
+      try {
+        const directory = await loadDirectory();
+        if (active) {
+          const merged = new Map(directory.services.map(service => [service.name,service]));
+          for (const [name,service] of localServices.current) merged.set(name,service);
+          setServices([...merged.values()]);setDirectoryNote(directory.note);setDirectorySource(directory.source);
+        }
+      } catch (error) {
+        if (active) setDirectoryNote('Directory refresh failed; any previously loaded entries may be stale. ' + String(error));
+      }
+    };
+    void refresh();
+    const timer = setInterval(() => {void refresh();}, 60_000);
+    return () => {active = false;clearInterval(timer);};
+  }, []);
 
   // Run batch probe across all services
   const handleRunBatchProbe = useCallback(async () => {
@@ -84,6 +106,7 @@ export const App: React.FC = () => {
   };
 
   const handleTestInPlayground = (manifest: ServiceManifest) => {
+    localServices.current.set(manifest.name,manifest);
     setServices((prev) => {
       const exists = prev.some((s) => s.name === manifest.name);
       return exists ? prev.map((s) => (s.name === manifest.name ? manifest : s)) : [manifest, ...prev];
@@ -93,6 +116,7 @@ export const App: React.FC = () => {
   };
 
   const handleAddToDirectory = (manifest: ServiceManifest) => {
+    localServices.current.set(manifest.name,manifest);
     setServices((prev) => {
       const exists = prev.some((s) => s.name === manifest.name);
       return exists ? prev.map((s) => (s.name === manifest.name ? manifest : s)) : [manifest, ...prev];
@@ -111,6 +135,7 @@ export const App: React.FC = () => {
       />
 
       <main className="main-content">
+        <p role="status">{directoryNote}</p>
         {activeTab === 'directory' && (
           <DirectoryView
             services={services}
@@ -125,7 +150,9 @@ export const App: React.FC = () => {
           />
         )}
 
-        {activeTab === 'playground' && (
+        {activeTab === 'playground' && directorySource !== 'demo' && <p>The demo payment playground is unavailable for this directory source. Directory metadata does not verify a payment destination.</p>}
+        {activeTab === 'playground' && directorySource === 'demo' && services.length === 0 && <p>No directory entries are available for the playground.</p>}
+        {activeTab === 'playground' && directorySource === 'demo' && services.length > 0 && (
           <PlaygroundView
             services={services}
             selectedService={playgroundTarget?.service || services[0]}
