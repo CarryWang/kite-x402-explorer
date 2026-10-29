@@ -38,7 +38,7 @@ The bundled service directory and `/api/mock-x402` route are demonstration data.
    - Direct GitHub PR submission deep linker and Git CLI script generator.
 
 6. **Kite Testnet E2E Suite**:
-   - Automated 5-stage on-chain diagnostic runner testing RPC block heights, pieUSD domain separator hashes, Facilitator status, EIP-3009 constructors, and 5xx zero-deduction safety invariants.
+   - Read-only checks for RPC block heights, pieUSD domain separator and facilitator capabilities; an offline EIP-3009 signature roundtrip is separate. Payment failure/zero-deduction evidence remains blocked until a seller integration is available.
 
 7. **Multi-Agent Quorum Consensus Engine**:
    - Byzantine fault-tolerant M-of-N decentralized AI inference verification.
@@ -51,6 +51,10 @@ The bundled service directory and `/api/mock-x402` route are demonstration data.
 ## 🚀 Quick Start
 
 Run `npm test` for payment safety regression tests and `npm run build` before deploying changes.
+
+### Diagnostic evidence
+
+The testnet suite performs read-only RPC and facilitator capability checks, compares DOMAIN_SEPARATOR on chain, and separately signs/recovers an ephemeral authorization offline. RPC/CORS failures never generate block heights or successful checks. Reports include the evidence scope and `settlementVerified:false`; the zero-deduction check is blocked until an instrumented seller and balance evidence are available. No payment is submitted by this suite.
 
 ### Prerequisites
 - Node.js >= 20

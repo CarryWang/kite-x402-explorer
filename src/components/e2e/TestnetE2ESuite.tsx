@@ -8,17 +8,17 @@ import {
   Terminal,
   Download,
 } from 'lucide-react';
-import { hashTypedData } from 'viem';
+import {checkRpc,checkDomain,checkFacilitator,checkOfflineSignature,checkZeroDeduction,type CheckEvidence} from '../../services/testnet-checks.js';
 import { KITE_TESTNET } from '../../types/kite.js';
-import { EIP3009_TYPES } from '../../lib/eip3009.js';
 
-export type E2ETestStatus = 'idle' | 'running' | 'passed' | 'failed';
+export type E2ETestStatus = 'idle' | 'running' | 'passed' | 'failed' | 'blocked';
 
 export interface E2ETestCase {
   id: string;
   name: string;
   description: string;
   status: E2ETestStatus;
+  scope?: CheckEvidence['scope'];
   durationMs?: number;
   output?: string;
   error?: string;
@@ -34,7 +34,7 @@ const INITIAL_TESTS: E2ETestCase[] = [
   {
     id: 'pieusd-domain-hash',
     name: '2. pieUSD EIP-712 Domain Separator Integrity',
-    description: 'Computes cryptographic EIP-712 domain hash for pieUSD (0x38129...) on chainId 2368.',
+    description: 'Compares the configured pieUSD domain with the on-chain DOMAIN_SEPARATOR on Kite testnet.',
     status: 'idle',
   },
   {
@@ -46,13 +46,13 @@ const INITIAL_TESTS: E2ETestCase[] = [
   {
     id: 'eip3009-settlement',
     name: '4. EIP-3009 TransferWithAuthorization Signature Roundtrip',
-    description: 'Constructs typed authorization data and asserts parameter validity for pieUSD micropayment.',
+    description: 'Signs and recovers an ephemeral EIP-3009 authorization locally. No transaction is submitted.',
     status: 'idle',
   },
   {
     id: 'zero-deduction-guard',
-    name: '5. Upstream 5xx Zero-Deduction Invariant Assertion',
-    description: 'Asserts that any upstream failure aborts facilitator settlement with zero token balance reduction.',
+    name: '5. Payment Failure Evidence (Requires Seller Integration)',
+    description: 'Requires an instrumented seller and balance evidence; reported as blocked until that integration exists.',
     status: 'idle',
   },
 ];
@@ -72,200 +72,25 @@ export const TestnetE2ESuite: React.FC = () => {
     setTests((prev) => prev.map((t) => (t.id === id ? { ...t, ...update } : t)));
   };
 
-  // Test 1: RPC node check
-  const runRpcTest = async (): Promise<boolean> => {
-    updateTest('rpc-connectivity', { status: 'running', error: undefined });
-    addLog('Executing Test 1: Pinging Kite Testnet RPC node...');
+  const runCheck = async (id:string, check:() => CheckEvidence | Promise<CheckEvidence>): Promise<boolean> => {
+    updateTest(id,{status:'running',error:undefined,output:undefined,scope:undefined});
     const start = performance.now();
-
     try {
-      const res = await fetch(KITE_TESTNET.rpcUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify([
-          { jsonrpc: '2.0', id: 1, method: 'eth_chainId', params: [] },
-          { jsonrpc: '2.0', id: 2, method: 'eth_blockNumber', params: [] },
-        ]),
-      }).catch(() => null);
-
-      const elapsed = Math.round(performance.now() - start);
-
-      if (res && res.ok) {
-        const data = await res.json();
-        const chainIdHex = data[0]?.result;
-        const blockHex = data[1]?.result;
-        const parsedChainId = parseInt(chainIdHex, 16);
-        const parsedBlock = parseInt(blockHex, 16);
-
-        if (parsedChainId === KITE_TESTNET.chainId) {
-          const out = `Chain ID: ${parsedChainId} (0x${parsedChainId.toString(16)}) | Latest Block: #${parsedBlock} | RPC Latency: ${elapsed}ms`;
-          updateTest('rpc-connectivity', {
-            status: 'passed',
-            durationMs: elapsed,
-            output: out,
-          });
-          addLog(`✓ Test 1 Passed: ${out}`);
-          return true;
-        }
-      }
-
-      // Simulation fallback if public RPC is restricted by CORS
-      const simBlock = 1845209 + Math.floor(Math.random() * 100);
-      const out = `Chain ID: 2368 (eip155:2368) | Verified Block: #${simBlock} | RPC latency: ${elapsed || 42}ms`;
-      updateTest('rpc-connectivity', {
-        status: 'passed',
-        durationMs: elapsed || 42,
-        output: out,
-      });
-      addLog(`✓ Test 1 Passed (verified): ${out}`);
-      return true;
-    } catch (err) {
-      updateTest('rpc-connectivity', {
-        status: 'failed',
-        error: String(err),
-      });
-      addLog(`✗ Test 1 Failed: ${String(err)}`);
+      const evidence = await check();
+      updateTest(id,{...evidence,durationMs:Math.round(performance.now()-start)});
+      addLog(evidence.status.toUpperCase() + ' [' + evidence.scope + '] ' + evidence.output);
+      return evidence.status === 'passed';
+    } catch(error) {
+      updateTest(id,{status:'failed',error:String(error),durationMs:Math.round(performance.now()-start)});
+      addLog('FAILED: ' + String(error));
       return false;
     }
   };
-
-  // Test 2: EIP-712 Domain Hash check
-  const runDomainHashTest = async (): Promise<boolean> => {
-    updateTest('pieusd-domain-hash', { status: 'running' });
-    addLog('Executing Test 2: Computing pieUSD EIP-712 domain hash...');
-    const start = performance.now();
-
-    try {
-      const domainHash = hashTypedData({
-        domain: {
-          name: KITE_TESTNET.eip712Domain.name,
-          version: KITE_TESTNET.eip712Domain.version,
-          chainId: BigInt(KITE_TESTNET.chainId),
-          verifyingContract: KITE_TESTNET.assetAddress,
-        },
-        types: EIP3009_TYPES,
-        primaryType: 'TransferWithAuthorization',
-        message: {
-          from: '0x1111111111111111111111111111111111111111',
-          to: '0x2222222222222222222222222222222222222222',
-          value: BigInt(1000000000000000),
-          validAfter: BigInt(0),
-          validBefore: BigInt(1727520000),
-          nonce: '0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
-        },
-      });
-
-      const elapsed = Math.round(performance.now() - start);
-      const out = `Computed Typed Data Hash: ${domainHash.slice(0, 18)}...${domainHash.slice(-8)}`;
-
-      updateTest('pieusd-domain-hash', {
-        status: 'passed',
-        durationMs: elapsed,
-        output: out,
-      });
-      addLog(`✓ Test 2 Passed: ${out}`);
-      return true;
-    } catch (err) {
-      updateTest('pieusd-domain-hash', {
-        status: 'failed',
-        error: String(err),
-      });
-      addLog(`✗ Test 2 Failed: ${String(err)}`);
-      return false;
-    }
-  };
-
-  // Test 3: Facilitator check
-  const runFacilitatorTest = async (): Promise<boolean> => {
-    updateTest('facilitator-ping', { status: 'running' });
-    addLog('Executing Test 3: Checking Facilitator v2 reachability...');
-    const start = performance.now();
-
-    try {
-      // Ping facilitator or simulate response check
-      const elapsed = Math.max(1, Math.round(performance.now() - start));
-      const out = `Facilitator URL: ${KITE_TESTNET.facilitatorUrl} | Protocol: x402 v2 | Reachable: Yes`;
-
-      updateTest('facilitator-ping', {
-        status: 'passed',
-        durationMs: elapsed + 35,
-        output: out,
-      });
-      addLog(`✓ Test 3 Passed: ${out}`);
-      return true;
-    } catch (err) {
-      updateTest('facilitator-ping', {
-        status: 'failed',
-        error: String(err),
-      });
-      addLog(`✗ Test 3 Failed: ${String(err)}`);
-      return false;
-    }
-  };
-
-  // Test 4: EIP-3009 TransferWithAuthorization signature construction
-  const runEip3009Test = async (): Promise<boolean> => {
-    updateTest('eip3009-settlement', { status: 'running' });
-    addLog('Executing Test 4: Testing EIP-3009 authorization constructor...');
-    const start = performance.now();
-
-    try {
-      const sampleAmount = '1000000000000000'; // 0.001 pieUSD
-      const validBefore = Math.floor(Date.now() / 1000) + 3600;
-
-      const elapsed = Math.max(1, Math.round(performance.now() - start));
-      const out = `Payload verified: 0.001 pieUSD (${sampleAmount} units) | validBefore: ${validBefore} | Scheme: exact`;
-
-      updateTest('eip3009-settlement', {
-        status: 'passed',
-        durationMs: elapsed,
-        output: out,
-      });
-      addLog(`✓ Test 4 Passed: ${out}`);
-      return true;
-    } catch (err) {
-      updateTest('eip3009-settlement', {
-        status: 'failed',
-        error: String(err),
-      });
-      addLog(`✗ Test 4 Failed: ${String(err)}`);
-      return false;
-    }
-  };
-
-  // Test 5: Upstream 5xx Zero-Deduction Assertion
-  const runZeroDeductionTest = async (): Promise<boolean> => {
-    updateTest('zero-deduction-guard', { status: 'running' });
-    addLog('Executing Test 5: Simulating 502 Bad Gateway failure & zero-deduction invariant...');
-    const start = performance.now();
-
-    try {
-      // Invariant: If upstream status >= 400, facilitator aborts settlement
-      const upstreamStatus = 502;
-      const willSettle = upstreamStatus < 400;
-
-      if (!willSettle) {
-        const elapsed = Math.max(1, Math.round(performance.now() - start));
-        const out = `Zero-Deduction Invariant Verified: Upstream HTTP 502 prevented facilitator token settlement. Deducted: 0 wei.`;
-
-        updateTest('zero-deduction-guard', {
-          status: 'passed',
-          durationMs: elapsed,
-          output: out,
-        });
-        addLog(`✓ Test 5 Passed: ${out}`);
-        return true;
-      }
-      throw new Error('Invariant breach: settlement allowed on error status');
-    } catch (err) {
-      updateTest('zero-deduction-guard', {
-        status: 'failed',
-        error: String(err),
-      });
-      addLog(`✗ Test 5 Failed: ${String(err)}`);
-      return false;
-    }
-  };
+  const runRpcTest = () => runCheck('rpc-connectivity',checkRpc);
+  const runDomainHashTest = () => runCheck('pieusd-domain-hash',checkDomain);
+  const runFacilitatorTest = () => runCheck('facilitator-ping',checkFacilitator);
+  const runEip3009Test = () => runCheck('eip3009-settlement',checkOfflineSignature);
+  const runZeroDeductionTest = () => runCheck('zero-deduction-guard',checkZeroDeduction);
 
   const handleRunAll = async () => {
     setIsRunningAll(true);
@@ -291,9 +116,10 @@ export const TestnetE2ESuite: React.FC = () => {
 
   const handleDownloadReport = () => {
     const report = {
-      title: 'Kite Testnet (eip155:2368) E2E Test Execution Report',
+      title: 'Kite Testnet Diagnostic Evidence Report',
       timestamp: new Date().toISOString(),
       network: KITE_TESTNET,
+      settlementVerified: false,
       results: tests,
       logs,
     };
@@ -326,13 +152,13 @@ export const TestnetE2ESuite: React.FC = () => {
         <div>
           <div className="hero-tag" style={{ display: 'inline-flex', marginBottom: '0.5rem' }}>
             <Zap size={13} style={{ marginRight: '6px' }} />
-            On-Chain Integration Test Suite
+            Network and Offline Diagnostics
           </div>
           <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '2rem', fontWeight: 800 }}>
-            Kite Testnet <span>E2E Verification Suite</span>
+            Kite Testnet <span>Diagnostic Suite</span>
           </h2>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.92rem', maxWidth: '640px' }}>
-            Automated test suite verifying live connectivity to Kite Testnet (<code>eip155:2368</code>), EIP-712 pieUSD domain parameters, Facilitator relay protocol, and consumer safety guards.
+            Read-only network checks and an offline signature roundtrip. This suite does not submit payments or verify settlement; unavailable evidence remains failed or blocked.
           </p>
         </div>
 
@@ -472,6 +298,7 @@ export const TestnetE2ESuite: React.FC = () => {
                 <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                     {isPassed && <CheckCircle2 size={18} color="var(--accent-emerald)" />}
+                    {test.status === 'blocked' && <AlertTriangle size={18} color="var(--accent-cyan)" />}
                     {isFailed && <AlertTriangle size={18} color="var(--accent-rose)" />}
                     {isRunning && <RefreshCw size={18} color="var(--accent-cyan)" style={{ animation: 'spin 1s linear infinite' }} />}
                     {test.status === 'idle' && (
@@ -487,7 +314,7 @@ export const TestnetE2ESuite: React.FC = () => {
                     )}
 
                     <strong style={{ fontSize: '0.92rem', color: 'var(--text-primary)' }}>
-                      {test.name}
+                      {test.name} — {test.status}{test.scope ? ` (${test.scope})` : ''}
                     </strong>
                   </div>
 
