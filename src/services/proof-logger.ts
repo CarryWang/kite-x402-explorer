@@ -1,4 +1,5 @@
 import type { PaymentProofRecord } from '../types/proof.js';
+import { isProofRecord } from '../lib/proof-schema.js';
 
 const STORAGE_KEY = 'kite_x402_proof_records_v1';
 type ProofUpdateListener = (proofs: PaymentProofRecord[]) => void;
@@ -11,7 +12,8 @@ export function getStoredProofs(): PaymentProofRecord[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
-    return JSON.parse(raw);
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter(isProofRecord).slice(0, 100) : [];
   } catch (err) {
     console.warn('Failed to parse stored payment proofs from localStorage', err);
     return [];
@@ -61,6 +63,7 @@ export function importProofs(incoming: PaymentProofRecord[]): { added: number; t
   const newRecords: PaymentProofRecord[] = [];
 
   for (const record of incoming) {
+    if (!isProofRecord(record)) continue;
     if (!existingIds.has(record.id)) {
       newRecords.push(record);
       existingIds.add(record.id);
