@@ -1,6 +1,7 @@
 import type { PaymentProofRecord, VerifiablePaymentReceipt } from '../types/proof.js';
 import { KITE_CHAINS } from '../types/kite.js';
 import { keccak256, toHex } from 'viem';
+import { proofRecordErrors } from './proof-schema.js';
 
 /**
  * Builds a standardized, verifiable JSON receipt for an x402 payment proof record.
@@ -138,68 +139,37 @@ export interface ReceiptValidationResult {
  * Validates and converts an imported verifiable JSON receipt into a PaymentProofRecord.
  */
 export function parseAndValidateReceipt(rawJson: unknown): ReceiptValidationResult {
-  const errors: string[] = [];
-
-  if (!rawJson || typeof rawJson !== 'object') {
-    return { valid: false, errors: ['Invalid JSON: Expected an object'] };
-  }
-
+  if (!rawJson || typeof rawJson !== 'object' || Array.isArray(rawJson))
+    return { valid: false, errors: ['Expected a receipt object'] };
   const r = rawJson as Record<string, any>;
-
-  // Check structure: can be either VerifiablePaymentReceipt or direct PaymentProofRecord
-  if (r.protocol && r.service && r.payment) {
-    // VerifiablePaymentReceipt structure
+  let candidate: unknown = r;
+  if (r.protocol || r.payment || r.service) {
+    if (r.$schema !== 'https://gokite.ai/schemas/x402-receipt-v1.json' || r.protocol?.version !== 2 ||
+        !r.service || typeof r.service !== 'object' || !r.payment || typeof r.payment !== 'object')
+      return { valid: false, errors: ['Unsupported or incomplete receipt schema'] };
     const p = r.payment;
     const s = r.service;
-    const auth = p.authorization || {};
-    const settlement = p.settlement || {};
-
-    if (!p.network || !p.payer || !p.payTo) {
-      errors.push('Missing required payment fields: network, payer, or payTo');
-    }
-
-    if (errors.length > 0) {
-      return { valid: false, errors };
-    }
-
-    const proofRecord: PaymentProofRecord = {
-      id: r.receiptId || `prf_imp_${Date.now().toString(36)}`,
-      timestamp: r.timestamp || new Date().toISOString(),
-      serviceName: s.name || 'imported-service',
-      serviceDisplayName: s.displayName || s.name || 'Imported Service',
-      endpointPath: s.endpoint || '/',
-      httpMethod: s.method || 'GET',
-      network: p.network,
-      tokenSymbol: p.tokenSymbol || (p.network === 'eip155:2368' ? 'pieUSD' : 'USDC.e'),
-      tokenAddress: p.assetContract || '',
-      amountFormatted: p.amountFormatted || '0.001 USD',
-      amountRaw: p.amountRaw || '1000000000000000',
-      payerAddress: p.payer,
-      payToAddress: p.payTo,
-      status: settlement.status || (settlement.settled ? 'settled' : 'simulated'),
-      txHash: settlement.txHash,
-      eip3009Details: {
-        from: p.payer,
-        to: p.payTo,
-        value: p.amountRaw || '0',
-        nonce: auth.nonce || '0x0',
-        validAfter: Number(auth.validAfter) || 0,
-        validBefore: Number(auth.validBefore) || 0,
-        v: auth.v,
-        r: auth.r,
-        s: auth.s,
-      },
-      responseStatus: settlement.settled ? 200 : 400,
+    const settlement = p.settlement;
+    if (!settlement || typeof settlement.settled !== 'boolean' || !p.authorization || typeof p.authorization !== 'object')
+      return { valid: false, errors: ['Missing settlement or authorization metadata'] };
+    if (settlement.settled !== (settlement.status === 'settled' && Boolean(settlement.txHash)))
+      return { valid: false, errors: ['Inconsistent reported settlement status'] };
+    const auth = p.authorization;
+    candidate = {
+      id: r.receiptId, timestamp: r.timestamp, serviceName: s.name, serviceDisplayName: s.displayName,
+      endpointPath: s.endpoint, httpMethod: s.method, network: p.network, tokenSymbol: p.tokenSymbol,
+      tokenAddress: p.assetContract, amountFormatted: p.amountFormatted, amountRaw: p.amountRaw,
+      payerAddress: p.payer, payToAddress: p.payTo, status: settlement.status, txHash: settlement.txHash,
+      responseStatus: settlement.settled || settlement.status === 'simulated' ? 200 : 400,
+      ...(auth.nonce !== '0x0' ? { eip3009Details: {
+        from: p.payer, to: p.payTo, value: p.amountRaw, nonce: auth.nonce,
+        validAfter: auth.validAfter, validBefore: auth.validBefore,
+        v: auth.v, r: auth.r, s: auth.s,
+      } } : {}),
     };
-
-    return { valid: true, errors: [], proofRecord };
-  } else if (r.id && r.serviceName && r.network && r.payerAddress) {
-    // Direct PaymentProofRecord structure
-    return { valid: true, errors: [], proofRecord: r as PaymentProofRecord };
   }
-
-  return {
-    valid: false,
-    errors: ['Unrecognized receipt schema: must match x402-receipt-v1 standard'],
+  const errors = proofRecordErrors(candidate);
+  return errors.length ? { valid: false, errors } : {
+    valid: true, errors: [], proofRecord: candidate as PaymentProofRecord,
   };
 }
