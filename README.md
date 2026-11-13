@@ -6,7 +6,7 @@
 
 ## 📌 Overview
 
-**Kite x402 Service Explorer & Playground** is an open-source developer hub and interactive execution sandbox tailored for the [Kite](https://gokite.ai) agentic economy. It bridges static `service.yaml` manifests from [`kite-x402-services`](https://github.com/gokite-ai/kite-x402-services) into live, verifiable Web3 execution, telemetry, and automated auditing.
+**Kite x402 Service Explorer & Playground** is an open-source developer hub and interactive execution sandbox tailored for the [Kite](https://gokite.ai) agentic economy. It displays `service.yaml` manifests from [`kite-x402-services`](https://github.com/gokite-ai/kite-x402-services), performs read-only diagnostics, and demonstrates the x402 request flow locally.
 
 The bundled service directory and `/api/mock-x402` route are demonstration data. Their addresses and availability labels are not verified payment destinations. The mock route does not contact a facilitator or settle a transaction; generated proof records are marked `simulated`. The escrow, channel, dispute, revenue-share, reputation, semantic-cache, compute-router, data-attestation, and session-allowance modules are local prototypes rather than deployed contracts or services. Credit, attestation discounts, cache discounts, and delegated spend approval require trusted external verification before production use.
 
@@ -38,20 +38,20 @@ entries, so deployments must not interpret catalog membership as readiness.
    - Deep endpoint inspection drawer with parameter schemas, pricing, token unit conversion, and multi-language client code generator (cURL, TypeScript, Python, Agent Tool).
 
 2. **Interactive x402 Protocol Playground**:
-   - 3-step interactive protocol execution:
+   - 3-step local protocol demonstration:
      - **Step 1**: Discover HTTP 402 challenge & parse `PAYMENT-REQUIRED` headers.
-     - **Step 2**: EIP-3009 `TransferWithAuthorization` typed signing with an isolated sandbox agent key. The local mock flow disables browser-wallet signing.
-     - **Step 3**: Dispatch `PAYMENT-SIGNATURE` $\to$ facilitator settlement $\to$ HTTP 200 response.
-   - Guardrails against edge cases: upstream 502 no-deduction protection & signature deadline validation.
+     - **Step 2**: Construct a simulated authorization with an isolated sandbox key. The local mock flow disables browser-wallet signing.
+     - **Step 3**: Send the simulated `PAYMENT-SIGNATURE` to `/api/mock-x402` and inspect its HTTP 200 response.
+   - Local failure demonstrations and signature deadline validation do not establish on-chain balance changes.
 
 3. **Health Probing & Latency Telemetry**:
    - Automated periodic probing against unmonetized `/healthz` and `/api/probe/:serviceName`.
    - Real-time status indicators (Healthy, Degraded, Down) with exact roundtrip millisecond latency metrics.
    - Auto-refresh controls (Off / 15s / 30s / 60s) and global telemetry status bar.
 
-4. **Persistent Proof Logs & Verifiable Receipts**:
-   - Local `localStorage` audit history tracking all 402 challenges, EIP-3009 signatures, and KiteScan settlement hashes.
-   - Standardized `x402-receipt-v1.json` export with one-click download and clipboard copy.
+4. **Local Proof Logs & Receipt Export**:
+   - Local `localStorage` history of observed challenges and simulated authorization attempts.
+   - `x402-receipt-v1.json` export marks local demonstrations as `simulated`; it is not proof of settlement.
 
 5. **Manifest Visual Builder & Schema Linter**:
    - Form-based `service.yaml` generator with real-time Ajv validation against `service.schema.json`.
@@ -73,6 +73,8 @@ entries, so deployments must not interpret catalog membership as readiness.
 
 Run `npm test` for payment safety regression tests and `npm run build` before deploying changes.
 
+The current 28-day development schedule and daily completion record are in [the implementation plan](docs/superpowers/plans/2026-11-13-four-week-explorer.md).
+
 ### Diagnostic evidence
 
 The testnet suite performs read-only RPC and facilitator capability checks, compares DOMAIN_SEPARATOR on chain, and separately signs/recovers an ephemeral authorization offline. RPC/CORS failures never generate block heights or successful checks. Reports include the evidence scope and `settlementVerified:false`; the zero-deduction check is blocked until an instrumented seller and balance evidence are available. No payment is submitted by this suite.
@@ -84,7 +86,7 @@ The testnet suite performs read-only RPC and facilitator capability checks, comp
 ### Installation
 
 ```bash
-git clone https://github.com/carry/kite-x402-explorer.git
+git clone https://github.com/CarryWang/kite-x402-explorer.git
 cd kite-x402-explorer
 npm install
 ```
