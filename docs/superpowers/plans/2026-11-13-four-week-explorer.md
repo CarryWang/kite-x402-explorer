@@ -65,5 +65,6 @@ For behavior changes, write a failing regression test, run it, implement the sco
 | Day | Commit | Tests | Build | Notes |
 | --- | --- | --- | --- | --- |
 | 1 | `docs: align roadmap with verified capabilities` | 229/229 passed | passed | Corrected claims; dependency audit found one high and two moderate runtime advisories for Day 3 |
+| 2 | `refactor: validate server configuration at startup` | 233/233 passed; production smoke passed | passed | Centralized directory and outbound origin validation; checked `main` and recent PR heads for overlap |
 
 Append one row before each later day's single commit.

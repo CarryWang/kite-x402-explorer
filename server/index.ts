@@ -6,26 +6,21 @@ import { INITIAL_SERVICES } from '../src/services/sample-services.js';
 import { parseAndValidateManifest } from '../src/services/manifest-loader.js';
 import { buildMockSettlement } from './mock-settlement.js';
 import { OfficialRegistry } from './official-registry.js';
+import { FACILITATOR_URL, parseServerConfig } from './config.js';
 
 dotenv.config();
 
 const app = express();
 const port = Number(process.env.PORT || 3001);
-const facilitator = 'https://facilitator.pieverse.io/v2';
-const allowedOrigins = [...new Set([
-  ...INITIAL_SERVICES.flatMap(service => service.base_url ? [new URL(service.base_url).origin] : []),
-  new URL(facilitator).origin,
-  ...(process.env.OUTBOUND_ALLOWED_ORIGINS || '').split(',').filter(Boolean).map(value => new URL(value.trim()).origin),
-])];
+const facilitator = FACILITATOR_URL;
+const { registrySource, registryCommit, allowedOrigins } = parseServerConfig(process.env);
 
 app.use(cors({
   exposedHeaders: ['PAYMENT-REQUIRED', 'PAYMENT-RESPONSE', 'payment-required', 'payment-response'],
 }));
 app.use(express.json());
 
-const registrySource = process.env.REGISTRY_SOURCE || 'demo';
-if (!['demo', 'official'].includes(registrySource)) throw new Error('REGISTRY_SOURCE must be demo or official');
-const officialRegistry = new OfficialRegistry({commit: process.env.REGISTRY_COMMIT});
+const officialRegistry = new OfficialRegistry({commit: registryCommit});
 app.use('/api/probe', (_req, res, next) => {
   if (registrySource === 'official') {res.status(503).json({status:'unavailable',source:'official',error:'Live registry probing is not configured'});return;}
   next();
