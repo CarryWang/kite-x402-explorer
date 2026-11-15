@@ -58,3 +58,32 @@ test('redirects, oversized bodies, stalled reads and DNS are bounded', async () 
     resolve:(async () => new Promise(() => {})) as unknown as typeof lookup}));
   assert.equal(mock.count(),0);
 });
+
+test('outbound requests reject unsupported methods, oversized bodies and unsafe headers before DNS', async () => {
+  const mock = transport(200, ['ok']);
+  const base = {allowedOrigins:[origin],resolve,request:mock.request};
+  await assert.rejects(requestPublic(origin,{...base,method:'DELETE'}),/method/i);
+  await assert.rejects(requestPublic(origin,{...base,method:'POST',body:'x'.repeat(64*1024+1)}),/body/i);
+  await assert.rejects(requestPublic(origin,{...base,headers:{Cookie:'session=secret'}}),/header/i);
+  await assert.rejects(requestPublic(origin,{...base,headers:{'Content-Type':'text/plain'}}),/header/i);
+  await assert.rejects(requestPublic(origin,{...base,headers:{'PAYMENT-SIGNATURE':'x'.repeat(16*1024+1)}}),/header/i);
+  assert.equal(mock.count(),0);
+});
+
+test('outbound POST sends only the bounded JSON body and approved headers', async () => {
+  const sent: {method?: string; headers?: Record<string,string>; body?: string} = {};
+  const mock = transport(200, ['ok']);
+  const request = ((url: URL, options: any, callback: any) => {
+    sent.method = options.method;
+    sent.headers = options.headers;
+    const req = (mock.request as any)(url, options, callback);
+    req.write = (body: string) => {sent.body = body;};
+    return req;
+  }) as typeof https.request;
+  await requestPublic(origin,{allowedOrigins:[origin],resolve,request,method:'POST',
+    headers:{Accept:'application/json','Content-Type':'application/json','PAYMENT-SIGNATURE':'proof'},
+    body:'{"value":1}'});
+  assert.equal(sent.method,'POST');
+  assert.deepEqual(sent.headers,{Accept:'application/json','Content-Type':'application/json','PAYMENT-SIGNATURE':'proof'});
+  assert.equal(sent.body,'{"value":1}');
+});

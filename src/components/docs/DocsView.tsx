@@ -7,10 +7,10 @@ export const DocsView: React.FC = () => {
       {/* Title */}
       <div style={{ marginBottom: '2.5rem' }}>
         <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '2.25rem', fontWeight: 800, marginBottom: '0.75rem' }}>
-          Architecture & <span>28-Day Roadmap</span>
+          Architecture & <span>Project History</span>
         </h2>
         <p style={{ color: 'var(--text-secondary)', fontSize: '1rem', lineHeight: 1.6 }}>
-          Comprehensive engineering roadmap, x402 protocol specification details on Kite chain, and daily implementation tracking.
+          A reference x402 flow and a summary of the original feature milestones. The current development schedule is tracked in the repository roadmap.
         </p>
       </div>
 
@@ -18,7 +18,7 @@ export const DocsView: React.FC = () => {
       <div className="glass-card" style={{ marginBottom: '2.5rem', padding: '1.75rem' }}>
         <h3 style={{ fontSize: '1.2rem', fontWeight: 700, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <Layers size={18} color="var(--accent-cyan)" />
-          How Kite x402 Micropayments Work
+          Reference x402 Payment Flow
         </h3>
 
         <div style={{ background: '#07090e', padding: '1.25rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-glass)' }}>
@@ -35,6 +35,9 @@ GET /v1/resource
 ◄───────────────────────────────────── 200 OK + PAYMENT-RESPONSE (tx hash)`}
           </pre>
         </div>
+        <p style={{ color: 'var(--text-secondary)', fontSize: '0.82rem', marginTop: '0.75rem' }}>
+          This diagram describes a possible live integration. The current playground uses a local mock and does not call the facilitator or move funds.
+        </p>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem', marginTop: '1.25rem' }}>
           <div style={{ background: 'var(--bg-secondary)', padding: '0.9rem', borderRadius: 'var(--radius-md)' }}>
@@ -57,7 +60,7 @@ GET /v1/resource
 
       {/* 4-Week Progress Tracker */}
       <h3 style={{ fontSize: '1.35rem', fontWeight: 700, marginBottom: '1.25rem' }}>
-        4-Week Engineering Roadmap
+        Original Feature Milestones
       </h3>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
@@ -94,11 +97,11 @@ GET /v1/resource
             </span>
           </div>
           <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
-            EIP-3009 TransferWithAuthorization construction, wallet connection (Viem injected & sandbox key), live 402 interceptor, protocol audit trail, KiteScan deep linker, and failure guardrails.
+            Local 402 challenge inspection, simulated authorization, protocol audit trail, and failure demonstrations. The demo does not settle on chain.
           </p>
           <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
             <span style={{ fontSize: '0.75rem', color: 'var(--accent-emerald)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <CheckCircle size={13} /> Day 8-14: Full 3-Step Protocol Playground & Settlement Loop
+              <CheckCircle size={13} /> Day 8-14: Local 3-Step Protocol Demonstration
             </span>
           </div>
         </div>
@@ -110,13 +113,13 @@ GET /v1/resource
               <span className="badge badge-emerald">WEEK 3 (SPRINT 1)</span>
               <h4 style={{ fontSize: '1.1rem', fontWeight: 700 }}>Health Probing Engine & Local Proof Logs</h4>
             </div>
-            <span style={{ fontSize: '0.8rem', color: 'var(--accent-cyan)', fontWeight: 600 }}>Next Weekly Release</span>
+            <span style={{ fontSize: '0.8rem', color: 'var(--accent-emerald)', fontWeight: 600 }}>Completed as local features</span>
           </div>
           <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
-            Automated /healthz endpoint probing, real-time latency indicators, persistent local transaction history, and verifiable payment receipt export.
+            Live /healthz probing for configured demo services, latency indicators, local proof history, and receipt export that marks simulated results.
           </p>
           <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
-            Weekly Commit: feat: implement service health probing engine, live latency badges, and persistent proof logs
+            These features are local or read-only; exported receipts identify simulated results.
           </div>
         </div>
 
@@ -125,15 +128,15 @@ GET /v1/resource
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
               <span className="badge badge-amber">WEEK 4 (SPRINT 2)</span>
-              <h4 style={{ fontSize: '1.1rem', fontWeight: 700 }}>Manifest Visual Builder, Testnet E2E & Go-Live</h4>
+              <h4 style={{ fontSize: '1.1rem', fontWeight: 700 }}>Manifest Builder, Testnet Diagnostics & Packaging</h4>
             </div>
-            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Upcoming Weekly Release</span>
+            <span style={{ fontSize: '0.8rem', color: 'var(--accent-emerald)' }}>Completed as read-only diagnostics</span>
           </div>
           <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
-            Interactive "Register New Service" form, real-time Schema linting, one-click PR-ready YAML export, live Kite testnet run, and production bundle packaging.
+            Manifest builder, schema linting, PR-ready YAML export, read-only Kite testnet diagnostics, and production bundle packaging. No testnet payment is sent.
           </p>
           <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
-            Weekly Commit: feat: add manifest visual builder, testnet e2e suite, and production deployment bundle
+            The diagnostic suite does not submit a payment or verify settlement.
           </div>
         </div>
       </div>

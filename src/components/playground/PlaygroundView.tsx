@@ -436,7 +436,7 @@ export const PlaygroundView: React.FC<PlaygroundViewProps> = ({
             Interactive <span>x402 Protocol Playground</span>
           </h2>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem' }}>
-            Step-by-step walkthrough of how an autonomous Agent discovers an HTTP 402 challenge, signs an EIP-3009 transfer authorization, and gets a verified 200 OK with on-chain settlement.
+            Local demonstration of an HTTP 402 challenge, simulated authorization, and mock HTTP 200 response. No facilitator call or on-chain settlement occurs.
           </p>
         </div>
         {Boolean(onOpenProofLogs) && (
@@ -652,9 +652,9 @@ export const PlaygroundView: React.FC<PlaygroundViewProps> = ({
               <AlertTriangle size={16} color="var(--accent-rose)" />
             )}
           </div>
-          <h4 style={{ fontSize: '0.98rem', fontWeight: 700, marginBottom: '0.35rem' }}>Settle & Return 200</h4>
+          <h4 style={{ fontSize: '0.98rem', fontWeight: 700, marginBottom: '0.35rem' }}>Send Mock Request</h4>
           <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
-            Attach PAYMENT-SIGNATURE. Facilitator settles gaslessly and proxies to upstream 200 OK.
+            Attach the simulated PAYMENT-SIGNATURE to the local mock endpoint and inspect its response.
           </p>
           <button
             className="btn btn-primary"
