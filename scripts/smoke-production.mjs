@@ -32,6 +32,25 @@ async function waitForServer() {
 
 await waitForServer();
 
+const methodResponse = await request('/api/proxy', { method: 'DELETE' });
+assert.equal(methodResponse.status, 405);
+assert.equal(methodResponse.headers.get('allow'), 'GET, HEAD, POST');
+
+const mediaResponse = await request('/api/proxy', {
+  method: 'POST',
+  headers: { 'Content-Type': 'text/plain' },
+  body: 'unparsed body',
+});
+assert.equal(mediaResponse.status, 415);
+
+const oversizedResponse = await request('/api/proxy', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ value: 'x'.repeat(64 * 1024) }),
+});
+assert.equal(oversizedResponse.status, 413);
+assert.match(oversizedResponse.headers.get('content-type') || '', /application\/json/);
+
 const servicesResponse = await request('/api/services');
 assert.equal(servicesResponse.status, 200);
 const { count, services } = await servicesResponse.json();
@@ -64,4 +83,4 @@ assert.equal(scriptResponse.status, 200);
 assert.match(scriptResponse.headers.get('content-type') || '', /javascript/);
 assert.ok((await scriptResponse.text()).length > 0);
 
-console.log('Production smoke checks passed: health, registry, manifest validation, x402 challenge, and SPA assets.');
+console.log('Production smoke checks passed: proxy boundaries, health, registry, manifest validation, x402 challenge, and SPA assets.');

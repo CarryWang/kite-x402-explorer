@@ -1,5 +1,5 @@
-import { requestPublic } from './outbound.js';
-import express, { type Request, type Response } from 'express';
+import { MAX_PAYMENT_SIGNATURE_BYTES, MAX_REQUEST_BODY_BYTES, requestPublic } from './outbound.js';
+import express, { type NextFunction, type Request, type Response } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { INITIAL_SERVICES } from '../src/services/sample-services.js';
@@ -18,7 +18,30 @@ const { registrySource, registryCommit, allowedOrigins } = parseServerConfig(pro
 app.use(cors({
   exposedHeaders: ['PAYMENT-REQUIRED', 'PAYMENT-RESPONSE', 'payment-required', 'payment-response'],
 }));
-app.use(express.json());
+app.use('/api/proxy', (req: Request, res: Response, next: NextFunction) => {
+  if (!['GET', 'HEAD', 'POST'].includes(req.method)) {
+    res.setHeader('Allow', 'GET, HEAD, POST');
+    res.status(405).json({error: 'Unsupported proxy method'});
+    return;
+  }
+  if (req.method === 'POST' && !req.is('application/json')) {
+    res.status(415).json({error: 'Proxy POST requires JSON'});
+    return;
+  }
+  if (req.method !== 'POST' && (req.headers['transfer-encoding'] || Number(req.headers['content-length'] ?? 0) > 0)) {
+    res.status(400).json({error: 'Proxy GET and HEAD cannot have a body'});
+    return;
+  }
+  next();
+});
+app.use(express.json({limit: MAX_REQUEST_BODY_BYTES}));
+app.use((error: unknown, _req: Request, res: Response, next: NextFunction) => {
+  if (typeof error === 'object' && error !== null && 'status' in error && error.status === 413) {
+    res.status(413).json({error: 'Request body too large'});
+    return;
+  }
+  next(error);
+});
 
 const officialRegistry = new OfficialRegistry({commit: registryCommit});
 app.use('/api/probe', (_req, res, next) => {
@@ -177,7 +200,11 @@ app.all('/api/proxy', async (req: Request, res: Response) => {
 
     const sig = req.headers['payment-signature'];
     if (sig) {
-      headers['PAYMENT-SIGNATURE'] = Array.isArray(sig) ? sig[0] : sig;
+      if (Array.isArray(sig) || Buffer.byteLength(sig, 'utf8') > MAX_PAYMENT_SIGNATURE_BYTES) {
+        res.status(400).json({error: 'Invalid payment signature header'});
+        return;
+      }
+      headers['PAYMENT-SIGNATURE'] = sig;
     }
 
     const hasBody = !['GET', 'HEAD'].includes(req.method);

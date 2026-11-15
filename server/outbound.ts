@@ -2,6 +2,11 @@ import { lookup } from 'node:dns/promises';
 import https from 'node:https';
 import { BlockList, isIP } from 'node:net';
 
+export const MAX_REQUEST_BODY_BYTES = 64 * 1024;
+export const MAX_PAYMENT_SIGNATURE_BYTES = 16 * 1024;
+const permittedMethods = new Set(['GET', 'HEAD', 'POST']);
+const permittedHeaders = new Set(['accept', 'content-type', 'payment-signature']);
+
 const blocked = new BlockList();
 for (const [ip, bits] of [['0.0.0.0', 8], ['10.0.0.0', 8], ['100.64.0.0', 10],
   ['127.0.0.0', 8], ['169.254.0.0', 16], ['172.16.0.0', 12], ['192.168.0.0', 16],
@@ -38,6 +43,24 @@ export interface OutboundOptions {
 
 /** One deadline covers DNS, headers and body. DNS results are pinned to the socket. */
 export async function requestPublic(raw: string, options: OutboundOptions): Promise<OutboundResponse> {
+  const method = options.method ?? 'GET';
+  if (!permittedMethods.has(method)) throw new Error('Outbound method is not permitted');
+  if (options.body !== undefined && method !== 'POST') throw new Error('Outbound body requires POST');
+  if (Buffer.byteLength(options.body ?? '', 'utf8') > MAX_REQUEST_BODY_BYTES) {
+    throw new Error('Outbound request body too large');
+  }
+  const headers = options.headers ?? {Accept: 'application/json'};
+  const seenHeaders = new Set<string>();
+  for (const [name, value] of Object.entries(headers)) {
+    const key = name.toLowerCase();
+    if (!permittedHeaders.has(key) || seenHeaders.has(key) || typeof value !== 'string' ||
+        /[\r\n\0]/.test(value) ||
+        (key === 'content-type' && value.toLowerCase() !== 'application/json') ||
+        Buffer.byteLength(value, 'utf8') > (key === 'payment-signature' ? MAX_PAYMENT_SIGNATURE_BYTES : 256)) {
+      throw new Error('Outbound request header is not permitted');
+    }
+    seenHeaders.add(key);
+  }
   const url = validateTarget(raw, options.allowedOrigins);
   const maxBytes = options.maxBytes ?? 1024 * 1024;
   return new Promise((resolve, reject) => {
@@ -58,7 +81,7 @@ export async function requestPublic(raw: string, options: OutboundOptions): Prom
         fail(new Error('Target must resolve only to public addresses')); return;
       }
       request = (options.request ?? https.request)(url, {
-        method: options.method ?? 'GET', headers: options.headers ?? {Accept: 'application/json'},
+        method, headers,
         lookup: (_host, settings, callback) => {
           if (settings.all) callback(null, addresses);
           else callback(null, addresses[0].address, addresses[0].family);
