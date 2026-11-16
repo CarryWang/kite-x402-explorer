@@ -1,4 +1,4 @@
-import { type Hex, hexToNumber } from 'viem';
+import { type Hex, hexToNumber, isAddress } from 'viem';
 import { KITE_CHAINS } from '../types/kite.js';
 import type { PaymentSignatureHeaderPayload } from '../types/x402.js';
 
@@ -18,11 +18,10 @@ export const EIP3009_TYPES = {
  */
 export function generateRandomNonce(): `0x${string}` {
   const bytes = new Uint8Array(32);
-  if (typeof crypto !== 'undefined') {
-    crypto.getRandomValues(bytes);
-  } else {
-    for (let i = 0; i < 32; i++) bytes[i] = Math.floor(Math.random() * 256);
+  if (typeof crypto === 'undefined' || typeof crypto.getRandomValues !== 'function') {
+    throw new Error('Secure randomness is required for payment authorization');
   }
+  crypto.getRandomValues(bytes);
   return ('0x' + Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('')) as `0x${string}`;
 }
 
@@ -30,11 +29,15 @@ export function generateRandomNonce(): `0x${string}` {
  * Splits a 65-byte hex signature (0x + 130 chars) into r, s, v
  */
 export function splitSignature(sigHex: Hex): { r: Hex; s: Hex; v: number } {
-  const clean = sigHex.startsWith('0x') ? sigHex.slice(2) : sigHex;
+  if (!/^0x[0-9a-fA-F]{130}$/.test(sigHex)) {
+    throw new Error('Expected a 65-byte hex signature');
+  }
+  const clean = sigHex.slice(2);
   const r = ('0x' + clean.slice(0, 64)) as Hex;
   const s = ('0x' + clean.slice(64, 128)) as Hex;
   let v = hexToNumber(('0x' + clean.slice(128, 130)) as Hex);
-  if (v < 27) v += 27; // EIP-155 / standard EVM v normalization
+  if (v === 0 || v === 1) v += 27;
+  if (v !== 27 && v !== 28) throw new Error('Invalid signature recovery value');
   return { r, s, v };
 }
 
@@ -72,7 +75,16 @@ export interface BuildEIP3009Params {
 export async function createSignedEIP3009Payload(
   params: BuildEIP3009Params
 ): Promise<{ payload: PaymentSignatureHeaderPayload; base64Header: string }> {
-  const kiteConfig = KITE_CHAINS[params.network] || KITE_CHAINS['eip155:2368'];
+  if (!Object.prototype.hasOwnProperty.call(KITE_CHAINS, params.network)) {
+    throw new Error('Unsupported payment network: ' + params.network);
+  }
+  const kiteConfig = KITE_CHAINS[params.network];
+  if (![params.fromAddress, params.payToAddress, params.assetAddress].every((value) => isAddress(value, { strict: false }))) {
+    throw new Error('Payment addresses must be 20-byte EVM addresses');
+  }
+  if (!/^[1-9][0-9]*$/.test(params.amountUnits) || BigInt(params.amountUnits) >= 2n ** 256n) {
+    throw new Error('Payment amount must be a positive uint256 integer');
+  }
   const chainId = kiteConfig.chainId;
   const domainName = params.tokenName || kiteConfig.eip712Domain.name;
   const domainVersion = params.tokenVersion || kiteConfig.eip712Domain.version;
