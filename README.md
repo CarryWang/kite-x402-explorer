@@ -75,6 +75,10 @@ Run `npm test` for payment safety regression tests and `npm run build` before de
 
 The current 28-day development schedule and daily completion record are in [the implementation plan](docs/superpowers/plans/2026-11-13-four-week-explorer.md).
 
+### Standalone contributed components
+
+The components introduced in PRs #44–55 and #57–63 are reusable source modules, not mounted explorer views. They do not add live block, gas, validator, or transaction data sources. Any caller must provide observed data and appropriate styling before presenting them as operational telemetry. The existing app's proof and payment flows remain governed by their own evidence checks; a local or imported receipt does not by itself prove chain settlement.
+
 ### Diagnostic evidence
 
 The testnet suite performs read-only RPC and facilitator capability checks, compares DOMAIN_SEPARATOR on chain, and separately signs/recovers an ephemeral authorization offline. RPC/CORS failures never generate block heights or successful checks. Reports include the evidence scope and `settlementVerified:false`; the zero-deduction check is blocked until an instrumented seller and balance evidence are available. No payment is submitted by this suite.

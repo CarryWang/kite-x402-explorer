@@ -37,6 +37,16 @@ interface ProofLogDrawerProps {
   onClose: () => void;
 }
 
+export function proofStatusLabel(status: ProofStatus): string {
+  switch (status) {
+    case 'settled': return 'Settlement Reported';
+    case 'simulated': return 'Simulated';
+    case 'aborted_502': return '502 Abort Reported';
+    case 'expired_sig': return 'Expired Signature';
+    default: return status;
+  }
+}
+
 export const ProofLogDrawer: React.FC<ProofLogDrawerProps> = ({ isOpen, onClose }) => {
   const [proofs, setProofs] = useState<PaymentProofRecord[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -138,15 +148,15 @@ export const ProofLogDrawer: React.FC<ProofLogDrawerProps> = ({ isOpen, onClose 
   const getStatusBadge = (status: ProofStatus) => {
     switch (status) {
       case 'settled':
-        return <span className="badge badge-emerald">Settled On-Chain</span>;
+        return <span className="badge badge-emerald">{proofStatusLabel(status)}</span>;
       case 'simulated':
-        return <span className="badge badge-cyan">Simulated</span>;
+        return <span className="badge badge-cyan">{proofStatusLabel(status)}</span>;
       case 'aborted_502':
-        return <span className="badge badge-amber">502 Guarded (No Deduction)</span>;
+        return <span className="badge badge-amber">{proofStatusLabel(status)}</span>;
       case 'expired_sig':
-        return <span className="badge badge-rose">Expired Sig</span>;
+        return <span className="badge badge-rose">{proofStatusLabel(status)}</span>;
       default:
-        return <span className="badge badge-cyan">{status}</span>;
+        return <span className="badge badge-cyan">{proofStatusLabel(status)}</span>;
     }
   };
 
@@ -207,7 +217,7 @@ export const ProofLogDrawer: React.FC<ProofLogDrawerProps> = ({ isOpen, onClose 
                 </span>
               </div>
               <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                Auditable EIP-3009 authorizations and settlement receipts
+                Reported payment records; verify settlement and balances independently
               </div>
             </div>
           </div>
@@ -447,7 +457,7 @@ export const ProofLogDrawer: React.FC<ProofLogDrawerProps> = ({ isOpen, onClose 
                 No Payment Proofs Found
               </div>
               <p style={{ fontSize: '0.82rem', maxWidth: '360px', margin: '0 auto' }}>
-                Run an interactive request in the x402 Playground to generate on-chain settlement receipts and EIP-3009 cryptographic proof logs.
+                Run an interactive request in the x402 Playground to generate local payment records. Reported settlement is not independently verified here.
               </p>
             </div>
           ) : (
@@ -544,7 +554,7 @@ export const ProofLogDrawer: React.FC<ProofLogDrawerProps> = ({ isOpen, onClose 
                           >
                             <AlertTriangle size={15} />
                             <span>
-                              Zero-Deduction Guarantee: Facilitator aborted settlement because upstream service responded with HTTP 502.
+                              This record reports an HTTP 502 abort. Check the facilitator and balances independently before concluding that no funds moved.
                             </span>
                           </div>
                         )}

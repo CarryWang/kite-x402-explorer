@@ -1,30 +1,30 @@
+export interface FeeMarketObservation {
+  baseFeeGwei: number;
+  /** Recent observed priority fees, all from the same network as baseFeeGwei. */
+  priorityFeeSamplesGwei: number[];
+}
+
 export interface FeeTierRecommendation {
   tier: 'Low' | 'Standard' | 'Fast';
   maxPriorityFeePerGasGwei: number;
   maxFeePerGasGwei: number;
-  estimatedWaitSeconds: number;
 }
 
-export function computeFeeRecommendations(baseFeeGwei: number): FeeTierRecommendation[] {
-  const safeBase = Math.max(0.001, baseFeeGwei);
-  return [
-    {
-      tier: 'Low',
-      maxPriorityFeePerGasGwei: 0.005,
-      maxFeePerGasGwei: Number((safeBase * 1.1 + 0.005).toFixed(4)),
-      estimatedWaitSeconds: 30,
-    },
-    {
-      tier: 'Standard',
-      maxPriorityFeePerGasGwei: 0.015,
-      maxFeePerGasGwei: Number((safeBase * 1.25 + 0.015).toFixed(4)),
-      estimatedWaitSeconds: 12,
-    },
-    {
-      tier: 'Fast',
-      maxPriorityFeePerGasGwei: 0.035,
-      maxFeePerGasGwei: Number((safeBase * 1.5 + 0.035).toFixed(4)),
-      estimatedWaitSeconds: 3,
-    },
-  ];
+/** Illustrative EIP-1559 caps from supplied observations; no inclusion time is predicted. */
+export function computeFeeRecommendations(observation: FeeMarketObservation | null): FeeTierRecommendation[] {
+  if (!observation || !Number.isFinite(observation.baseFeeGwei) || observation.baseFeeGwei < 0) return [];
+  const samples = observation.priorityFeeSamplesGwei
+    .filter((fee) => Number.isFinite(fee) && fee >= 0)
+    .sort((a, b) => a - b);
+  if (samples.length === 0) return [];
+
+  const percentile = (fraction: number) => samples[Math.floor((samples.length - 1) * fraction)];
+  return ([['Low', 0.25], ['Standard', 0.5], ['Fast', 0.75]] as const).map(([tier, fraction]) => {
+    const priority = percentile(fraction);
+    return {
+      tier,
+      maxPriorityFeePerGasGwei: priority,
+      maxFeePerGasGwei: Number((2 * observation.baseFeeGwei + priority).toFixed(4)),
+    };
+  });
 }

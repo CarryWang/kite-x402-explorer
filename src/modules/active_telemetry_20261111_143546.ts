@@ -1,5 +1,4 @@
-// Continuous Ecosystem Telemetry Module
-// Generated automatically for active verification
+/** A caller-supplied observation; this module does not poll or infer session health. */
 export interface ActiveSessionHeartbeat {
   sessionId: string;
   account: string;
@@ -11,17 +10,18 @@ export interface ActiveSessionHeartbeat {
   };
 }
 
-export function recordActiveSession(): ActiveSessionHeartbeat {
-  return {
-    sessionId: "sess-20261111-143546",
-    account: "ellipticalisl",
-    timestamp: "2026-11-11T14:35:49.272927+08:00",
-    metrics: {
-      healthScore: 99.8,
-      latencyMs: Math.floor(40 + Math.random() * 60),
-      activeChannels: 4,
-    },
-  };
+export function recordActiveSession(observation: ActiveSessionHeartbeat): ActiveSessionHeartbeat {
+  if (!observation || !observation.sessionId?.trim() || !observation.account?.trim() ||
+      !observation.timestamp || !Number.isFinite(Date.parse(observation.timestamp))) {
+    throw new TypeError('A session, account, and valid timestamp are required');
+  }
+  const { healthScore, latencyMs, activeChannels } = observation.metrics ?? {};
+  if (!Number.isFinite(healthScore) || healthScore < 0 || healthScore > 100 ||
+      !Number.isFinite(latencyMs) || latencyMs < 0 ||
+      !Number.isSafeInteger(activeChannels) || activeChannels < 0) {
+    throw new RangeError('healthScore, latencyMs, and activeChannels must be valid observations');
+  }
+  return { ...observation, metrics: { ...observation.metrics } };
 }
 
 export default recordActiveSession;

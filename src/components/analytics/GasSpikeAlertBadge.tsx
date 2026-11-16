@@ -11,7 +11,11 @@ export const GasSpikeAlertBadge: React.FC<GasSpikeAlertBadgeProps> = ({
   baselineGasGwei,
   anomalyThresholdPercent = 25,
 }) => {
-  if (baselineGasGwei <= 0) return null;
+  if (!Number.isFinite(currentGasGwei) || currentGasGwei < 0 ||
+      !Number.isFinite(baselineGasGwei) || baselineGasGwei <= 0 ||
+      !Number.isFinite(anomalyThresholdPercent) || anomalyThresholdPercent < 0) {
+    return <span>Gas data unavailable</span>;
+  }
 
   const diffPercent = Math.round(((currentGasGwei - baselineGasGwei) / baselineGasGwei) * 100);
   const isSpike = diffPercent >= anomalyThresholdPercent;

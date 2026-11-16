@@ -5,18 +5,14 @@ export interface FlowNode {
   volumePercent: number;
 }
 
-export const TokenFlowSankeyMini: React.FC<{ flows?: FlowNode[] }> = ({
-  flows = [
-    { label: 'Settlement Escrow', volumePercent: 55 },
-    { label: 'Agent Fee Split', volumePercent: 30 },
-    { label: 'Treasury Burn', volumePercent: 15 },
-  ],
-}) => {
+export const TokenFlowSankeyMini: React.FC<{ flows?: FlowNode[] }> = ({ flows = [] }) => {
+  const observedFlows = flows.filter((flow) => Number.isFinite(flow.volumePercent) && flow.volumePercent >= 0 && flow.volumePercent <= 100);
   return (
     <div className="rounded-xl border border-neutral-800 bg-neutral-900/60 p-4">
       <h5 className="text-xs font-semibold text-neutral-300">Token Volume Distribution</h5>
+      {observedFlows.length === 0 && <p>No flow observations</p>}
       <div className="mt-3 space-y-2">
-        {flows.map((flow) => (
+        {observedFlows.map((flow) => (
           <div key={flow.label}>
             <div className="flex justify-between text-xs text-neutral-400">
               <span>{flow.label}</span>

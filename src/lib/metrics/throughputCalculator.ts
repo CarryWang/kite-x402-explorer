@@ -1,41 +1,30 @@
 export interface SettlementEvent {
   timestampMs: number;
-  amountGwei: number;
 }
 
 export interface ThroughputStats {
   tps: number;
-  totalGwei: number;
   sampleCount: number;
 }
 
 export class ThroughputCalculator {
-  private windowMs: number;
-  private events: SettlementEvent[];
+  private events: SettlementEvent[] = [];
 
-  constructor(windowMs: number = 60000) {
-    this.windowMs = windowMs;
-    this.events = [];
+  constructor(private readonly windowMs: number = 60000) {
+    if (!Number.isFinite(windowMs) || windowMs <= 0) throw new RangeError('windowMs must be positive and finite');
   }
 
-  public recordEvent(amountGwei: number): void {
-    this.events.push({ timestampMs: Date.now(), amountGwei });
-    this.evictOldEvents();
+  public recordEvent(timestampMs: number): void {
+    if (!Number.isFinite(timestampMs) || timestampMs < 0) throw new RangeError('timestampMs must be non-negative and finite');
+    this.events.push({ timestampMs });
   }
 
-  public getStats(): ThroughputStats {
-    this.evictOldEvents();
-    const count = this.events.length;
-    const totalGwei = this.events.reduce((sum, e) => sum + e.amountGwei, 0);
-    const windowSeconds = this.windowMs / 1000;
-    const tps = parseFloat((count / windowSeconds).toFixed(2));
-
-    return { tps, totalGwei, sampleCount: count };
-  }
-
-  private evictOldEvents(): void {
-    const cutoff = Date.now() - this.windowMs;
-    this.events = this.events.filter((e) => e.timestampMs >= cutoff);
+  public getStats(nowMs: number = Date.now()): ThroughputStats {
+    if (!Number.isFinite(nowMs) || nowMs < 0) throw new RangeError('nowMs must be non-negative and finite');
+    const cutoff = nowMs - this.windowMs;
+    this.events = this.events.filter((e) => e.timestampMs >= cutoff && e.timestampMs <= nowMs);
+    const sampleCount = this.events.length;
+    return { tps: sampleCount / (this.windowMs / 1000), sampleCount };
   }
 }
 

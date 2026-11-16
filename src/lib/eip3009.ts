@@ -75,7 +75,8 @@ export interface BuildEIP3009Params {
 export async function createSignedEIP3009Payload(
   params: BuildEIP3009Params
 ): Promise<{ payload: PaymentSignatureHeaderPayload; base64Header: string }> {
-  if (!Object.prototype.hasOwnProperty.call(KITE_CHAINS, params.network)) {
+  if (!Object.prototype.hasOwnProperty.call(KITE_CHAINS, params.network)
+    || KITE_CHAINS[params.network].network !== params.network) {
     throw new Error('Unsupported payment network: ' + params.network);
   }
   const kiteConfig = KITE_CHAINS[params.network];

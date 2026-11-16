@@ -1,17 +1,15 @@
-import React, { useState } from 'react';
-import { computeFeeRecommendations, FeeTierRecommendation } from '../../utils/fee-estimator';
+import { useState, type FC } from 'react';
+import { computeFeeRecommendations } from '../../utils/fee-estimator.js';
+import type { FeeMarketObservation, FeeTierRecommendation } from '../../utils/fee-estimator.js';
 
 interface PriorityFeeAdvisorProps {
-  currentBaseFeeGwei?: number;
+  observation: FeeMarketObservation | null;
   onSelectTier?: (tier: FeeTierRecommendation) => void;
 }
 
-export const PriorityFeeAdvisor: React.FC<PriorityFeeAdvisorProps> = ({
-  currentBaseFeeGwei = 0.05,
-  onSelectTier,
-}) => {
+export const PriorityFeeAdvisor: FC<PriorityFeeAdvisorProps> = ({ observation, onSelectTier }) => {
   const [selectedTier, setSelectedTier] = useState<string>('Standard');
-  const tiers = computeFeeRecommendations(currentBaseFeeGwei);
+  const tiers = computeFeeRecommendations(observation);
 
   const handleSelect = (tier: FeeTierRecommendation) => {
     setSelectedTier(tier.tier);
@@ -19,32 +17,35 @@ export const PriorityFeeAdvisor: React.FC<PriorityFeeAdvisorProps> = ({
   };
 
   return (
-    <div className="rounded-xl border border-neutral-800 bg-neutral-900/60 p-4">
-      <h4 className="text-xs font-semibold uppercase tracking-wider text-neutral-400 mb-3">Recommended Gas Tiers</h4>
-      <div className="grid grid-cols-3 gap-3">
-        {tiers.map((t) => {
-          const isSelected = selectedTier === t.tier;
-          return (
+    <section className="glass-card" style={{ padding: '1rem' }} aria-label="Observed priority fee tiers">
+      <h4 style={{ fontSize: '0.95rem', marginBottom: '0.3rem' }}>Observed Priority Fee Tiers</h4>
+      <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginBottom: '0.75rem' }}>
+        Illustrative max fee caps: twice the supplied base fee plus sampled priority fees. Inclusion time is unknown.
+      </p>
+      {tiers.length === 0 ? (
+        <p role="status">No fee observations available.</p>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '0.75rem' }}>
+          {tiers.map((tier) => (
             <button
-              key={t.tier}
-              onClick={() => handleSelect(t)}
-              className={`rounded-lg p-3 text-left transition border ${
-                isSelected
-                  ? 'border-cyan-500 bg-cyan-950/20 text-neutral-100'
-                  : 'border-neutral-800 bg-neutral-800/30 text-neutral-300 hover:border-neutral-700'
-              }`}
+              type="button"
+              key={tier.tier}
+              onClick={() => handleSelect(tier)}
+              aria-pressed={selectedTier === tier.tier}
+              style={{
+                padding: '0.75rem', textAlign: 'left', color: 'var(--text-primary)',
+                background: 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)',
+                border: selectedTier === tier.tier ? '1px solid var(--accent-cyan)' : '1px solid var(--border-glass)',
+              }}
             >
-              <div className="flex items-center justify-between">
-                <span className="font-semibold text-xs">{t.tier}</span>
-                <span className="text-[10px] text-neutral-500">~{t.estimatedWaitSeconds}s</span>
-              </div>
-              <p className="mt-2 font-mono text-sm font-bold text-cyan-400">{t.maxFeePerGasGwei} Gwei</p>
-              <p className="text-[10px] text-neutral-400">Priority: {t.maxPriorityFeePerGasGwei} Gwei</p>
+              <strong>{tier.tier}</strong>
+              <p>Max fee: {tier.maxFeePerGasGwei} Gwei</p>
+              <small>Sampled priority: {tier.maxPriorityFeePerGasGwei} Gwei</small>
             </button>
-          );
-        })}
-      </div>
-    </div>
+          ))}
+        </div>
+      )}
+    </section>
   );
 };
 

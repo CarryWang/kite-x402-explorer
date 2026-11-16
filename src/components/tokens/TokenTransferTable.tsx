@@ -9,12 +9,16 @@ export interface TokenTransferEvent {
 }
 
 interface TokenTransferTableProps {
-  transfers: TokenTransferEvent[];
+  /** Undefined means that transfer events have not been supplied. */
+  transfers?: readonly TokenTransferEvent[] | null;
 }
 
 export const TokenTransferTable: React.FC<TokenTransferTableProps> = ({ transfers }) => {
-  if (!transfers || transfers.length === 0) {
-    return <div className="text-xs text-neutral-500 italic p-3">No ERC-20 token transfer events in this transaction.</div>;
+  if (transfers == null) {
+    return <div className="text-xs text-neutral-500 italic p-3">Token transfer data unavailable.</div>;
+  }
+  if (transfers.length === 0) {
+    return <div className="text-xs text-neutral-500 italic p-3">No ERC-20 token transfer events in supplied data.</div>;
   }
 
   return (

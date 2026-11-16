@@ -1,81 +1,64 @@
-import React, { useState } from 'react';
-
-export interface TxExportItem {
-  txHash: string;
-  sender: string;
-  recipient: string;
-  amountGwei: number;
-  blockNumber: number;
-  timestamp: string;
-}
+import React from 'react';
+import { buildVerifiableReceipt } from '../../lib/receipt-exporter.js';
+import type { PaymentProofRecord } from '../../types/proof.js';
 
 export interface TxReceiptExportModalProps {
   isOpen: boolean;
   onClose: () => void;
-  items: TxExportItem[];
+  items: PaymentProofRecord[];
 }
 
-export const TxReceiptExportModal: React.FC<TxReceiptExportModalProps> = ({
-  isOpen,
-  onClose,
-  items,
-}) => {
-  const [copied, setCopied] = useState(false);
+export function buildReceiptExportJson(items: PaymentProofRecord[]): string {
+  return JSON.stringify({
+    exportedAt: new Date().toISOString(),
+    count: items.length,
+    receipts: items.map(buildVerifiableReceipt),
+  }, null, 2);
+}
 
+const csvHeaders = ['serviceName', 'network', 'tokenSymbol', 'amountRaw', 'status',
+  'txHash', 'payerAddress', 'payToAddress', 'timestamp'] as const;
+
+function csvCell(value: string): string {
+  // A quoted CSV field can still execute as a formula in spreadsheet software.
+  const safe = /^[\s\x00-\x1f]*[=+\-@]/.test(value) ? `'${value}` : value;
+  return `"${safe.replace(/"/g, '""')}"`;
+}
+
+export function serializeReceiptsCsv(items: PaymentProofRecord[]): string {
+  const rows = items.map((item) => csvHeaders.map((key) => csvCell(String(item[key] ?? ''))).join(','));
+  return [csvHeaders.join(','), ...rows].join('\r\n') + '\r\n';
+}
+
+function download(text: string, mime: string, extension: string): void {
+  const url = URL.createObjectURL(new Blob([text], { type: mime }));
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = `kite-x402-receipts-${Date.now()}.${extension}`;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+export const TxReceiptExportModal: React.FC<TxReceiptExportModalProps> = ({ isOpen, onClose, items }) => {
   if (!isOpen) return null;
 
-  const handleExportJson = () => {
-    const jsonStr = JSON.stringify(items, null, 2);
-    const blob = new Blob([jsonStr], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `kite-settlement-receipts-${Date.now()}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const handleExportCsv = () => {
-    const headers = 'txHash,sender,recipient,amountGwei,blockNumber,timestamp\n';
-    const rows = items
-      .map(
-        (it) =>
-          `${it.txHash},${it.sender},${it.recipient},${it.amountGwei},${it.blockNumber},${it.timestamp}`
-      )
-      .join('\n');
-    const blob = new Blob([headers + rows], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `kite-settlement-receipts-${Date.now()}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-xl border border-neutral-800 bg-neutral-900 p-6 shadow-2xl">
-        <h3 className="text-base font-semibold text-neutral-100">Export Settlement Receipts</h3>
-        <p className="mt-1 text-xs text-neutral-400">Selected {items.length} records ready for download.</p>
+    <div role="dialog" aria-modal="true" aria-labelledby="receipt-export-title"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+      <div className="w-full max-w-md rounded-xl border border-neutral-800 bg-neutral-900 p-6">
+        <h3 id="receipt-export-title">Export Local Payment Records</h3>
+        <p>{items.length} records selected. Settlement status is reported by each record and is not independently verified.</p>
         <div className="mt-6 flex flex-col space-y-3">
-          <button
-            onClick={handleExportJson}
-            className="w-full rounded-lg bg-neutral-800 px-4 py-2.5 text-xs font-medium text-neutral-200 hover:bg-neutral-700 transition"
-          >
-            Download JSON Format (.json)
+          <button disabled={items.length === 0} onClick={() => download(buildReceiptExportJson(items), 'application/json', 'json')}>
+            Download x402 Receipts (.json)
           </button>
-          <button
-            onClick={handleExportCsv}
-            className="w-full rounded-lg bg-cyan-600 px-4 py-2.5 text-xs font-medium text-white hover:bg-cyan-500 transition"
-          >
-            Download CSV Spreadsheet (.csv)
+          <button disabled={items.length === 0} onClick={() => download(serializeReceiptsCsv(items), 'text/csv;charset=utf-8', 'csv')}>
+            Download CSV (.csv)
           </button>
         </div>
-        <div className="mt-4 flex justify-end">
-          <button onClick={onClose} className="text-xs text-neutral-400 hover:text-neutral-200">
-            Cancel
-          </button>
-        </div>
+        <button onClick={onClose}>Cancel</button>
       </div>
     </div>
   );

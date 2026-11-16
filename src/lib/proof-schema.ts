@@ -22,13 +22,17 @@ export function proofRecordErrors(value: unknown): string[] {
   if (!Number.isFinite(Date.parse(record.timestamp as string))) errors.push('Invalid timestamp');
   for (const field of ['tokenAddress', 'payerAddress', 'payToAddress'])
     if (!address.test(record[field] as string)) errors.push(`Invalid ${field}`);
-  if (!/^\d{1,78}$/.test(record.amountRaw as string) || BigInt(record.amountRaw as string) >= 2n ** 256n)
+  const amountRawValid = /^\d{1,78}$/.test(record.amountRaw as string) &&
+    BigInt(record.amountRaw as string) < 2n ** 256n;
+  if (!amountRawValid)
     errors.push('amountRaw must be an unsigned uint256 decimal string');
   if (!Number.isInteger(record.responseStatus) || (record.responseStatus as number) < 100 || (record.responseStatus as number) > 599)
     errors.push('Invalid HTTP response status');
   if (record.txHash !== undefined && (typeof record.txHash !== 'string' || !hash.test(record.txHash)))
     errors.push('Invalid transaction hash');
   if (record.status === 'settled' && !record.txHash) errors.push('A reported settlement must include a transaction hash');
+  if (record.status === 'aborted_502' && record.txHash)
+    errors.push('An aborted 502 record cannot include a transaction hash');
   if (record.eip3009Details !== undefined) {
     const auth = record.eip3009Details as Record<string, unknown> | null;
     if (!auth || typeof auth !== 'object' || !address.test(String(auth.from)) || !address.test(String(auth.to)) ||
@@ -37,6 +41,10 @@ export function proofRecordErrors(value: unknown): string[] {
       !Number.isSafeInteger(auth.validAfter) || !Number.isSafeInteger(auth.validBefore) ||
       (auth.validAfter as number) < 0 || (auth.validBefore as number) < (auth.validAfter as number))
       errors.push('Invalid EIP-3009 authorization fields');
+    else if (amountRawValid && ((auth.from as string).toLowerCase() !== (record.payerAddress as string).toLowerCase() ||
+      (auth.to as string).toLowerCase() !== (record.payToAddress as string).toLowerCase() ||
+      BigInt(auth.value as string) !== BigInt(record.amountRaw as string)))
+      errors.push('EIP-3009 authorization does not match payment fields');
   }
   return errors;
 }
