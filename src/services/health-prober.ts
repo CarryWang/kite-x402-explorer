@@ -1,5 +1,6 @@
 import type { ServiceManifest } from '../types/service.js';
 import type { ServiceHealthStatus } from '../types/health.js';
+import {isProbeResult} from '../types/probe.js';
 
 const HEALTH_CACHE_KEY = 'kite_x402_health_cache_v1';
 const EXPECTED_ASSETS: Record<string,string> = {
@@ -19,18 +20,26 @@ export async function probeServiceHealth(service: ServiceManifest): Promise<Serv
     const response = await fetch('/api/probe/' + encodeURIComponent(service.name), {
       headers:{Accept:'application/json'}, signal:controller.signal,
     });
-    const data = await response.json();
+    const data: unknown = await response.json();
     const latencyMs = Math.max(1,Math.round(performance.now()-started));
-    if (!response.ok) return {...base,status:'down',httpStatus:response.status,latencyMs,
-      details:'Probe failed with HTTP ' + response.status};
-    const observed = data?.source === 'live';
-    const networkMatched = observed && data.network === service.network && data.networkMatched === true;
-    const assetMatched = observed && typeof data.asset === 'string' &&
+    if (!isProbeResult(data) || data.serviceName !== service.name ||
+        (data.kind === 'observed' && data.endpoint !== base.endpointChecked)) {
+      return {...base,status:'down',httpStatus:response.status,latencyMs,
+        details:'Invalid or mismatched probe result'};
+    }
+    if (data.kind === 'unavailable') return {...base,status:'down',httpStatus:response.status,latencyMs,
+      lastCheckedAt:data.checkedAt,details:'Probe unavailable: ' + data.reason.replaceAll('_',' ')};
+    if (!response.ok || data.httpStatus < 200 || data.httpStatus >= 300) {
+      return {...base,status:'down',httpStatus:data.httpStatus,latencyMs,lastCheckedAt:data.checkedAt,
+        details:'Probe failed with HTTP ' + data.httpStatus};
+    }
+    const networkMatched = data.network === service.network && data.networkMatched === true;
+    const assetMatched = typeof data.asset === 'string' &&
       data.asset.toLowerCase() === EXPECTED_ASSETS[service.network]?.toLowerCase() && data.assetMatched === true;
-    const facilitatorReachable = observed && data.facilitatorReachable === true;
+    const facilitatorReachable = data.facilitatorReachable === true;
     const healthy = networkMatched && assetMatched && facilitatorReachable;
     return {...base,status:healthy && latencyMs < 750 ? 'healthy' : 'degraded',latencyMs,
-      httpStatus:response.status,networkMatched,assetMatched,facilitatorReachable,
+      httpStatus:data.httpStatus,lastCheckedAt:data.checkedAt,networkMatched,assetMatched,facilitatorReachable,
       details:healthy ? (latencyMs < 750 ? 'Live service and facilitator checks passed' : 'Live checks passed with high latency')
         : 'Live network, asset or facilitator verification is missing or failed'};
   } catch {
