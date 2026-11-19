@@ -68,5 +68,6 @@ For behavior changes, write a failing regression test, run it, implement the sco
 | 2 | `refactor: validate server configuration at startup` | 233/233 passed; production smoke passed | passed | Centralized directory and outbound origin validation; checked `main` and recent PR heads for overlap |
 | 3 | `fix: constrain proxy requests and responses` | 235/235 passed; production smoke passed; full `npm audit` 0 vulnerabilities | passed | Limited proxy methods, JSON requests, body and forwarded headers; updated patched dependency lockfile |
 | 5 | `refactor: define explicit probe results` | 262/262 passed; production smoke passed | passed | Shared observed/unavailable probe contract; browser rejects malformed or mismatched results. Day 4 has no separately completed daily commit and remains to be reconciled at the weekly review. |
+| 7 | `feat: show directory loading and stale states` | 264/264 passed | passed | Distinct accessible loading, unavailable, empty and stale notices; hide misleading empty results while loading or unavailable. Reviewed open PRs #66 and #67. Days 4 and 6 have no daily commits and remain for weekly review. |
 
 Append one row before each later day's single commit.
