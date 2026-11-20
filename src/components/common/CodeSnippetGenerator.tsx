@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import type { ServiceManifest, ServiceEndpoint } from '../../types/service.js';
+import { generateCurlSnippet } from '../../lib/curl-snippet.js';
 import { Copy, Check, Terminal, FileCode, Bot } from 'lucide-react';
 
 interface CodeSnippetGeneratorProps {
@@ -28,22 +29,6 @@ export const CodeSnippetGenerator: React.FC<CodeSnippetGeneratorProps> = ({
     navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
-  };
-
-  const getCurlCode = () => {
-    const bodyFlag =
-      endpoint.method !== 'GET' && endpoint.example_request?.body
-        ? ` \\\n  -H "Content-Type: application/json" \\\n  -d '${JSON.stringify(endpoint.example_request.body)}'`
-        : '';
-
-    return `# 1. Step 1: Probe endpoint to trigger 402 Challenge
-curl -i -X ${endpoint.method} "${fullUrl}${queryParams}" \\
-  -H "Accept: application/json"${bodyFlag}
-
-# 2. Step 2: Sign EIP-3009 Authorization and send with PAYMENT-SIGNATURE
-curl -i -X ${endpoint.method} "${fullUrl}${queryParams}" \\
-  -H "Accept: application/json" \\
-  -H "PAYMENT-SIGNATURE: <base64-encoded-eip3009-authorization>"${bodyFlag}`;
   };
 
   const getTsCode = () => {
@@ -348,7 +333,7 @@ console.log(\`Issued ticket nonce \${ticket.sequenceNonce}, cumulative: \${ticke
   const getActiveCode = () => {
     switch (activeTab) {
       case 'curl':
-        return getCurlCode();
+        return generateCurlSnippet(service, endpoint);
       case 'ts':
         return getTsCode();
       case 'python':
@@ -523,6 +508,11 @@ console.log(\`Issued ticket nonce \${ticket.sequenceNonce}, cumulative: \${ticke
       </div>
 
       {/* Code Area */}
+      {activeTab === 'curl' && (
+        <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+          cURL examples use Bash / POSIX shell syntax.
+        </p>
+      )}
       <div style={{ position: 'relative' }}>
         <pre className="code-block" style={{ margin: 0, fontSize: '0.78rem', maxHeight: '280px', overflowY: 'auto' }}>
           {getActiveCode()}

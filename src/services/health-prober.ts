@@ -14,15 +14,17 @@ export async function probeServiceHealth(service: ServiceManifest): Promise<Serv
   const timeout = setTimeout(() => controller.abort(), 4500);
   const base = {serviceName:service.name, networkMatched:false, assetMatched:false,
     facilitatorReachable:false, lastCheckedAt:new Date().toISOString(),
-    endpointChecked:service.base_url ? new URL('/healthz',service.base_url).href : '/healthz'};
+    endpointChecked:service.base_url || '/healthz'};
   try {
+    base.endpointChecked = service.base_url ? new URL('/healthz',service.base_url).href : '/healthz';
     const response = await fetch('/api/probe/' + encodeURIComponent(service.name), {
       headers:{Accept:'application/json'}, signal:controller.signal,
     });
+    if (!response.ok) return {...base,status:'down',httpStatus:response.status,
+      latencyMs:Math.max(1,Math.round(performance.now()-started)),
+      details:'Probe failed with HTTP ' + response.status};
     const data = await response.json();
     const latencyMs = Math.max(1,Math.round(performance.now()-started));
-    if (!response.ok) return {...base,status:'down',httpStatus:response.status,latencyMs,
-      details:'Probe failed with HTTP ' + response.status};
     const observed = data?.source === 'live';
     const networkMatched = observed && data.network === service.network && data.networkMatched === true;
     const assetMatched = observed && typeof data.asset === 'string' &&
