@@ -12,8 +12,14 @@ function fixture() {
   const fetcher=(async(url:unknown)=>{
     calls++;
     if(fail) return new Response('offline',{status:503});
-    if(String(url).includes('/commits/')) return Response.json({sha});
+    if (String(url).endsWith('/git/ref/heads/main')) {
+      return Response.json({ref:'refs/heads/main', object:{type:'commit', sha}});
+    }
+    if (String(url).endsWith('/commits/main')) {
+      return Response.json({sha, files:[{patch:'x'.repeat(65_536)}]});
+    }
     if(String(url).includes('/git/trees/')) return Response.json({truncated:false,tree:empty?[]:[
+      {type:'blob',path:'services/open-meteo-weather/README.md'},
       {type:'blob',path:'services/open-meteo-weather/service.yaml'},
       {type:'blob',path:'services/broken/service.yaml'}]});
     assert.ok(String(url).includes('/'+sha+'/'));
@@ -69,3 +75,49 @@ test('a manifest transport failure retains the whole previous catalog',async()=>
   assert.deepEqual(stale.services,first.services);
   assert.equal(stale.registry.fetchedAt,first.registry.fetchedAt);
 });
+
+const manifestPath = 'services/open-meteo-weather/service.yaml';
+const manifestFile = {type:'blob', path:manifestPath, mode:'100644'};
+
+for (const {label, tree, error} of [
+  {
+    label:'duplicate service names',
+    tree:[manifestFile, {...manifestFile}],
+    error:/Duplicate official registry service/,
+  },
+  {
+    label:'a manifest at the wrong directory depth',
+    tree:[{...manifestFile, path:'services/open-meteo-weather/nested/service.yaml'}],
+    error:/Invalid official registry manifest path/,
+  },
+  {
+    label:'a manifest with a noncanonical service name',
+    tree:[{...manifestFile, path:'services/Open-Meteo-Weather/service.yaml'}],
+    error:/Invalid official registry manifest path/,
+  },
+  {
+    label:'a manifest entry that is not a regular file',
+    tree:[{...manifestFile, mode:'120000'}],
+    error:/Invalid official registry manifest file/,
+  },
+  {
+    label:'a tree with more than 10,000 entries',
+    tree:Array.from({length:10_001}, (_, i) => ({type:'blob', path:`docs/${i}.md`})),
+    error:/10,000-entry limit/,
+  },
+]) {
+  test(`official registry rejects ${label} before fetching manifests`, async () => {
+    const urls: string[] = [];
+    const fetcher: typeof fetch = async (url) => {
+      urls.push(String(url));
+      if (urls.length === 1) return Response.json({truncated:false, tree});
+      return Response.json(INITIAL_SERVICES[0]);
+    };
+    const result = await new OfficialRegistry({commit:sha, fetcher}).get();
+    assert.match(result.registry.error ?? '', error);
+    assert.equal(result.registry.commit, null);
+    assert.equal(result.registry.stale, true);
+    assert.deepEqual(result.services, []);
+    assert.equal(urls.length, 1);
+  });
+}
