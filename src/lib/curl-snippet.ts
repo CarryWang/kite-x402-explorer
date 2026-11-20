@@ -13,7 +13,7 @@ export function generateCurlSnippet(service: ServiceManifest, endpoint: ServiceE
     ? JSON.stringify(endpoint.example_request.body) : undefined;
   const bodyFlag = body !== undefined
     ? ` \\\n  -H "Content-Type: application/json" \\\n  -d ${quoteShellArgument(body)}` : '';
-  const command = `curl -i -X ${quoteShellArgument(endpoint.method)} ${quoteShellArgument(url)}`;
+  const command = `curl --globoff -i -X ${quoteShellArgument(endpoint.method)} ${quoteShellArgument(url)}`;
 
   return `# 1. Step 1: Probe endpoint to trigger 402 Challenge
 ${command} \\

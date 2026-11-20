@@ -61,7 +61,7 @@ for (const fixture of [
     assert.equal(result.status, 0, result.stderr);
     const url = service.base_url + fixture.path + ('query' in fixture
       ? '?' + new URLSearchParams(fixture.query).toString() : '');
-    const first = ['-i', '-X', fixture.method, url, '-H', 'Accept: application/json'];
+    const first = ['--globoff', '-i', '-X', fixture.method, url, '-H', 'Accept: application/json'];
     const second = [...first, '-H', 'PAYMENT-SIGNATURE: <base64-encoded-eip3009-authorization>'];
     if (fixture.method !== 'GET' && 'body' in fixture) {
       const body = ['-H', 'Content-Type: application/json', '-d', JSON.stringify(fixture.body)];

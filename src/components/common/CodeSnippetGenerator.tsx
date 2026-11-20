@@ -16,29 +16,26 @@ export const CodeSnippetGenerator: React.FC<CodeSnippetGeneratorProps> = ({
   endpoint,
 }) => {
   const [activeTab, setActiveTab] = useState<LangTab>('curl');
-  const [copyStatus, setCopyStatus] = useState<'idle' | 'pending' | 'copied' | 'failed'>('idle');
+  const [copyResult, setCopyResult] = useState<{ text: string; status: 'pending' | 'copied' | 'failed' }>();
 
   useEffect(() => {
-    if (copyStatus !== 'copied') return;
-    const timeout = setTimeout(() => setCopyStatus('idle'), 2000);
+    if (copyResult?.status !== 'copied') return;
+    const timeout = setTimeout(() => setCopyResult(undefined), 2000);
     return () => clearTimeout(timeout);
-  }, [copyStatus]);
+  }, [copyResult]);
 
   const fullUrl = `${service.base_url || 'https://your-host'}${endpoint.path}`;
-  const queryParams = endpoint.example_request?.query
-    ? '?' + new URLSearchParams(endpoint.example_request.query).toString()
-    : '';
   const isTestnet = service.network === 'eip155:2368';
   const tokenSymbol = isTestnet ? 'pieUSD' : 'USDC.e';
   const chainId = isTestnet ? 2368 : 2366;
 
   const handleCopy = async (text: string) => {
-    setCopyStatus('pending');
+    setCopyResult({ text, status: 'pending' });
     try {
       await navigator.clipboard.writeText(text);
-      setCopyStatus('copied');
+      setCopyResult({ text, status: 'copied' });
     } catch {
-      setCopyStatus('failed');
+      setCopyResult({ text, status: 'failed' });
     }
   };
 
@@ -62,16 +59,16 @@ export const CodeSnippetGenerator: React.FC<CodeSnippetGeneratorProps> = ({
     return `// LangChain / OpenAI Agent Tool definition for Kite x402 API
 export const kite${service.name.replace(/[^a-zA-Z0-9]/g, '')}Tool = {
   name: "${service.name.replace(/-/g, '_')}",
-  description: "${service.description.replace(/"/g, "'")}. Costs $${endpoint.price_usd} (${tokenSymbol}) settled on Kite chain.",
+  description: ${JSON.stringify(`${service.description} Listed price: $${endpoint.price_usd} (${tokenSymbol}).`)},
   parameters: {
     type: "object",
     properties: {
-      ${endpoint.example_request?.query ? Object.keys(endpoint.example_request.query).map(k => `${k}: { type: "string", description: "${k} parameter" }`).join(',\n      ') : 'query: { type: "string" }'}
+      ${endpoint.example_request?.query ? Object.keys(endpoint.example_request.query).map(k => `[${JSON.stringify(k)}]: { type: "string" }`).join(',\n      ') : 'query: { type: "string" }'}
     }
   },
   execute: async (args: Record<string, string>) => {
     // Passes through autonomous agent wallet with x402 auto-payment
-    return await callKiteServiceWithAutoPayment("${fullUrl}", args);
+    return await callKiteServiceWithAutoPayment(${JSON.stringify(fullUrl)}, args);
   }
 };`;
   };
@@ -80,15 +77,15 @@ export const kite${service.name.replace(/[^a-zA-Z0-9]/g, '')}Tool = {
     return `// Kite Agent Swarm Orchestrator DAG Node Definition
 export interface SwarmAgentTask {
   taskId: string;
-  targetEndpoint: "${endpoint.path}";
+  targetEndpoint: ${JSON.stringify(endpoint.path)};
   serviceCostUsd: "${endpoint.price_usd}";
   upstreamNetwork: "${service.network}";
   dependencies: string[];
 }
 
-export const ${service.name.replace(/[^a-zA-Z0-9]/g, '')}SwarmStep: SwarmAgentTask = {
+export const swarm${service.name.replace(/[^a-zA-Z0-9]/g, '')}Step: SwarmAgentTask = {
   taskId: "task_${service.name.replace(/-/g, '_')}_exec",
-  targetEndpoint: "${endpoint.path}",
+  targetEndpoint: ${JSON.stringify(endpoint.path)},
   serviceCostUsd: "${endpoint.price_usd}",
   upstreamNetwork: "${service.network}",
   dependencies: ["step_research_synthesis"],
@@ -119,7 +116,7 @@ const chunkCost = 1000000000000000n; // 0.001 token
 const { channel: updatedChan, ticket } = allocateStreamTicket(channel, chunkCost);
 
 console.log(\`Issued ticket nonce \${ticket.sequenceNonce}, cumulative: \${ticket.cumulativeWei} wei\`);
-// Transmit ticket in PAYMENT-SIGNATURE header for stream verification at ${endpoint.path}`;
+// Transmit the ticket for stream verification according to the service protocol.`;
   };
 
   const getActiveCode = () => {
@@ -142,6 +139,9 @@ console.log(\`Issued ticket nonce \${ticket.sequenceNonce}, cumulative: \${ticke
         return getStreamChannelCode();
     }
   };
+
+  const activeCode = getActiveCode();
+  const copyStatus = copyResult?.text === activeCode ? copyResult.status : 'idle';
 
   return (
     <div style={{ marginTop: '1rem' }}>
@@ -307,11 +307,11 @@ console.log(\`Issued ticket nonce \${ticket.sequenceNonce}, cumulative: \${ticke
       )}
       <div style={{ position: 'relative' }}>
         <pre className="code-block" style={{ margin: 0, fontSize: '0.78rem', maxHeight: '280px', overflowY: 'auto' }}>
-          {getActiveCode()}
+          {activeCode}
         </pre>
         <button
-          onClick={() => handleCopy(getActiveCode())}
-          disabled={copyStatus === 'pending'}
+          onClick={() => handleCopy(activeCode)}
+          disabled={copyResult?.status === 'pending'}
           style={{
             position: 'absolute',
             top: '8px',

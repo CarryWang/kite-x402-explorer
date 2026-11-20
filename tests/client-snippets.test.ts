@@ -66,8 +66,8 @@ test('every language snippet targets the endpoint URL, method and network', () =
   for (const [language, build] of Object.entries(builders)) {
     const code = build(svc, ep);
     assert.match(code, /https:\/\/demo\.sandbox\.gokite\.ai\/v1\/demo\?lang=en/, `${language} url`);
-    assert.match(code, /PAYMENT-SIGNATURE/, `${language} payment header`);
     assert.match(code, /PAYMENT-REQUIRED/, `${language} challenge header`);
+    assert.doesNotMatch(code, /PAYMENT-SIGNATURE|Settled/, `${language} only discovers the challenge over HTTP`);
   }
   assert.match(buildTsSnippet(svc, ep), /method: "POST"/);
   assert.match(buildPythonSnippet(svc, ep), /requests\.post\(/);
@@ -100,17 +100,22 @@ test('every bundled sample service renders all four snippets without unresolved 
 
 const EIP3009_FIELDS = ['from', 'to', 'value', 'validAfter', 'validBefore', 'nonce'];
 
-test('TS snippet signs against the token contract from the 402 challenge, not the merchant address', () => {
+test('TS snippet signs against an explicitly approved Kite token', () => {
   const svc = service();
   const code = buildTsSnippet(svc, endpoint());
-  assert.match(code, /verifyingContract:\s*accept\.asset/);
+  assert.match(code, /verifyingContract:\s*approved\.asset/);
+  assert.match(code, /approved\.asset\.toLowerCase\(\) !== "0x38129cf4ce5e183eff248f42a7d345bb1b47621a"/);
+  assert.match(code, /approved\.amount <= 0n/);
+  assert.doesNotMatch(code, /accepts\[0\]|AGENT_PRIVATE_KEY/);
   assert.equal(code.includes(`verifyingContract: "${svc.pay_to}"`), false);
 });
 
-test('Python snippet signs against the token contract from the 402 challenge, not the merchant address', () => {
+test('Python snippet signs against an explicitly approved Kite token', () => {
   const code = buildPythonSnippet(service(), endpoint());
-  assert.match(code, /"verifyingContract":\s*accept\["asset"\]/);
-  assert.doesNotMatch(code, /"verifyingContract":\s*accept\["payTo"\]/);
+  assert.match(code, /"verifyingContract":\s*asset/);
+  assert.match(code, /asset\.lower\(\) != "0x38129cf4ce5e183eff248f42a7d345bb1b47621a"/);
+  assert.match(code, /0 < amount < 2\*\*256/);
+  assert.doesNotMatch(code, /AGENT_PRIVATE_KEY|challenge\["accepts"\]/);
 });
 
 test('TS snippet types TransferWithAuthorization with exactly the six EIP-3009 fields', () => {
