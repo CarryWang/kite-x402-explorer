@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import type { ServiceManifest, ServiceEndpoint } from '../../types/service.js';
 import { Copy, Check, Terminal, FileCode, Bot } from 'lucide-react';
 
@@ -14,7 +14,13 @@ export const CodeSnippetGenerator: React.FC<CodeSnippetGeneratorProps> = ({
   endpoint,
 }) => {
   const [activeTab, setActiveTab] = useState<LangTab>('curl');
-  const [copied, setCopied] = useState(false);
+  const [copyStatus, setCopyStatus] = useState<'idle' | 'pending' | 'copied' | 'failed'>('idle');
+
+  useEffect(() => {
+    if (copyStatus !== 'copied') return;
+    const timeout = setTimeout(() => setCopyStatus('idle'), 2000);
+    return () => clearTimeout(timeout);
+  }, [copyStatus]);
 
   const fullUrl = `${service.base_url || 'https://your-host'}${endpoint.path}`;
   const queryParams = endpoint.example_request?.query
@@ -24,10 +30,14 @@ export const CodeSnippetGenerator: React.FC<CodeSnippetGeneratorProps> = ({
   const tokenSymbol = isTestnet ? 'pieUSD' : 'USDC.e';
   const chainId = isTestnet ? 2368 : 2366;
 
-  const handleCopy = (text: string) => {
-    navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const handleCopy = async (text: string) => {
+    setCopyStatus('pending');
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopyStatus('copied');
+    } catch {
+      setCopyStatus('failed');
+    }
   };
 
   const getCurlCode = () => {
@@ -529,6 +539,7 @@ console.log(\`Issued ticket nonce \${ticket.sequenceNonce}, cumulative: \${ticke
         </pre>
         <button
           onClick={() => handleCopy(getActiveCode())}
+          disabled={copyStatus === 'pending'}
           style={{
             position: 'absolute',
             top: '8px',
@@ -546,17 +557,15 @@ console.log(\`Issued ticket nonce \${ticket.sequenceNonce}, cumulative: \${ticke
           }}
           title="Copy snippet"
         >
-          {copied ? (
-            <>
-              <Check size={13} color="var(--accent-emerald)" />
-              <span style={{ color: 'var(--accent-emerald)' }}>Copied</span>
-            </>
-          ) : (
-            <>
-              <Copy size={13} />
-              <span>Copy</span>
-            </>
-          )}
+          {copyStatus === 'copied'
+            ? <Check size={13} color="var(--accent-emerald)" />
+            : <Copy size={13} />}
+          <span aria-live="polite" style={{ color: copyStatus === 'copied' ? 'var(--accent-emerald)' : undefined }}>
+            {copyStatus === 'copied' ? 'Copied'
+              : copyStatus === 'failed' ? 'Copy failed'
+              : copyStatus === 'pending' ? 'Copying…'
+              : 'Copy'}
+          </span>
         </button>
       </div>
     </div>
