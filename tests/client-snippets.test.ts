@@ -143,3 +143,97 @@ test('no bundled sample service produces a snippet that uses pay_to as the verif
     }
   }
 });
+
+// Each probe embeds the example body as a string literal. These read that literal back.
+const decodeRustString = (literal: string): string =>
+  literal.slice(1, -1).replace(/\\(u\{([0-9a-fA-F]+)\}|[\\"nrt0])/g, (_, esc: string, hex?: string) =>
+    hex ? String.fromCodePoint(parseInt(hex, 16)) : ({ n: '\n', r: '\r', t: '\t', '0': '\0' } as Record<string, string>)[esc] ?? esc);
+
+const probeBodies = (svc: ServiceManifest, ep: ServiceEndpoint): Record<string, string | undefined> => ({
+  ts: buildTsSnippet(svc, ep).match(/^\s*body: (".*"),$/m)?.[1],
+  python: buildPythonSnippet(svc, ep).match(/^BODY = (".*")$/m)?.[1],
+  go: buildGoSnippet(svc, ep).match(/strings\.NewReader\((".*")\)/)?.[1],
+  rust: buildRustSnippet(svc, ep).match(/\.body\((".*")\)/)?.[1],
+});
+
+const sentBody = (language: string, literal: string): string =>
+  language === 'rust' ? decodeRustString(literal) : JSON.parse(literal);
+
+test('POST probes send the example request body in every language', () => {
+  const body = { text: 'it\'s "quoted"\nline two', n: 0, nested: [1, { a: null }], emoji: 'ü✓' };
+  const ep = endpoint({ method: 'POST', example_request: { body } });
+  for (const [language, literal] of Object.entries(probeBodies(service(), ep))) {
+    assert.ok(literal, `${language} probe sends a body`);
+    assert.deepEqual(JSON.parse(sentBody(language, literal)), body, `${language} body round-trips`);
+  }
+});
+
+test('falsy example bodies are still sent', () => {
+  for (const body of [0, false, null, '']) {
+    const ep = endpoint({ method: 'POST', example_request: { body } });
+    for (const [language, literal] of Object.entries(probeBodies(service(), ep))) {
+      assert.ok(literal, `${language} sends ${JSON.stringify(body)}`);
+      assert.equal(sentBody(language, literal), JSON.stringify(body), `${language} body for ${JSON.stringify(body)}`);
+    }
+  }
+});
+
+test('GET probes and endpoints without an example body send no body', () => {
+  const withoutBody = [
+    endpoint({ method: 'GET', example_request: { body: { ignored: true } } }),
+    endpoint({ method: 'POST' }),
+    endpoint({ method: 'POST', example_request: { query: { q: 'x' } } }),
+  ];
+  for (const ep of withoutBody) {
+    for (const [language, literal] of Object.entries(probeBodies(service(), ep))) {
+      assert.equal(literal, undefined, `${language} ${ep.method} sends no body`);
+    }
+    assert.doesNotMatch(buildGoSnippet(service(), ep), /"strings"/, 'Go imports only what it uses');
+    for (const build of Object.values(builders)) {
+      assert.doesNotMatch(build(service(), ep), /Content-Type/i);
+    }
+  }
+});
+
+test('probes send example headers and a JSON content type with the body', () => {
+  const ep = endpoint({ method: 'POST', example_request: { headers: { 'X-Api-Version': '2' }, body: { q: 1 } } });
+  assert.match(buildTsSnippet(service(), ep), /headers: \{"X-Api-Version":"2","Content-Type":"application\/json"\}/);
+  assert.match(buildPythonSnippet(service(), ep), /^HEADERS = \{"X-Api-Version": "2", "Content-Type": "application\/json"\}$/m);
+  assert.match(buildGoSnippet(service(), ep), /req\.Header\.Set\("X-Api-Version", "2"\)\n\treq\.Header\.Set\("Content-Type", "application\/json"\)/);
+  assert.match(buildRustSnippet(service(), ep), /\.header\("X-Api-Version", "2"\)\n\s*\.header\("Content-Type", "application\/json"\)/);
+});
+
+test('an example Content-Type header is kept instead of being duplicated', () => {
+  const ep = endpoint({
+    method: 'PUT',
+    example_request: { headers: { 'content-type': 'application/json; charset=utf-8' }, body: { q: 1 } },
+  });
+  for (const [language, build] of Object.entries(builders)) {
+    const code = build(service(), ep);
+    assert.equal(code.match(/content-type/gi)?.length, 1, `${language} sets one content type`);
+    assert.match(code, /application\/json; charset=utf-8/, `${language} keeps the example value`);
+  }
+});
+
+test('example headers on GET probes are sent without a content type', () => {
+  const ep = endpoint({ example_request: { headers: { Authorization: 'Bearer "demo"' } } });
+  assert.match(buildTsSnippet(service(), ep), /headers: \{"Authorization":"Bearer \\"demo\\""\}/);
+  assert.match(buildPythonSnippet(service(), ep), /^HEADERS = \{"Authorization": "Bearer \\"demo\\""\}$/m);
+  assert.match(buildGoSnippet(service(), ep), /req\.Header\.Set\("Authorization", "Bearer \\"demo\\""\)/);
+  assert.match(buildRustSnippet(service(), ep), /\.header\("Authorization", "Bearer \\"demo\\""\)/);
+});
+
+test('every bundled sample endpoint with an example body sends it from all four probes', () => {
+  let checked = 0;
+  for (const svc of INITIAL_SERVICES) {
+    for (const ep of svc.endpoints) {
+      if (ep.method === 'GET' || ep.example_request?.body === undefined) continue;
+      checked++;
+      for (const [language, literal] of Object.entries(probeBodies(svc, ep))) {
+        assert.ok(literal, `${svc.name} ${ep.path} ${language}`);
+        assert.deepEqual(JSON.parse(sentBody(language, literal)), ep.example_request.body, `${svc.name} ${ep.path} ${language}`);
+      }
+    }
+  }
+  assert.ok(checked > 0, 'sample catalog has POST examples');
+});

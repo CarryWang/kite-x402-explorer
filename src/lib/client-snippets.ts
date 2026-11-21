@@ -25,14 +25,46 @@ export function snippetContext(service: ServiceManifest, endpoint: ServiceEndpoi
   };
 }
 
+export interface ExampleRequest {
+  headers: [string, string][];
+  /** JSON text of `example_request.body`, sent as-is; absent for GET or when no body is documented. */
+  body?: string;
+}
+
+/** Headers and body of the documented example request, so a probe matches the request buyers will send. */
+export function exampleRequest(endpoint: ServiceEndpoint): ExampleRequest {
+  const headers = Object.entries(endpoint.example_request?.headers ?? {}).map(([k, v]): [string, string] => [k, String(v)]);
+  const raw = endpoint.example_request?.body;
+  const body = endpoint.method !== 'GET' && raw !== undefined ? JSON.stringify(raw) : undefined;
+  if (body !== undefined && !headers.some(([k]) => k.toLowerCase() === 'content-type')) {
+    headers.push(['Content-Type', 'application/json']);
+  }
+  return { headers, body };
+}
+
+/** Rust string literal; JSON escapes such as \uXXXX or \b are not valid Rust. */
+function rustString(value: string): string {
+  return `"${value.replace(/[\\"\u0000-\u001f\u007f]/g, (c) =>
+    ({ '\\': '\\\\', '"': '\\"', '\n': '\\n', '\r': '\\r', '\t': '\\t' })[c] ?? `\\u{${c.charCodeAt(0).toString(16)}}`)}"`;
+}
+
 export function buildTsSnippet(service: ServiceManifest, endpoint: ServiceEndpoint): string {
   const { fullUrl, queryParams, chainId } = snippetContext(service, endpoint);
   const { assetAddress, eip712Domain } = KITE_CHAINS[service.network];
+  const { headers, body } = exampleRequest(endpoint);
+  const init = [
+    `    method: "${endpoint.method}",`,
+    ...(headers.length ? [`    headers: ${JSON.stringify(Object.fromEntries(headers))},`] : []),
+    ...(body !== undefined ? [`    body: ${JSON.stringify(body)},`] : []),
+    `    redirect: 'error',`,
+  ].join('\n');
   return `import { isAddress, type Address, type LocalAccount } from 'viem';
 
 // Inspect the PAYMENT-REQUIRED header separately from signing.
 export function probeService() {
-  return fetch(${JSON.stringify(fullUrl + queryParams)}, { method: "${endpoint.method}", redirect: 'error' });
+  return fetch(${JSON.stringify(fullUrl + queryParams)}, {
+${init}
+  });
 }
 
 // Pass independently approved terms. This helper signs locally and returns the signature.
@@ -82,16 +114,22 @@ export async function signAuthorization(
 export function buildPythonSnippet(service: ServiceManifest, endpoint: ServiceEndpoint): string {
   const { fullUrl, queryParams, isTestnet, tokenSymbol, chainId } = snippetContext(service, endpoint);
   const { assetAddress, eip712Domain } = KITE_CHAINS[service.network];
+  const { headers, body } = exampleRequest(endpoint);
+  const constants = [
+    ...(headers.length ? [`HEADERS = {${headers.map(([k, v]) => `${JSON.stringify(k)}: ${JSON.stringify(v)}`).join(', ')}}`] : []),
+    ...(body !== undefined ? [`BODY = ${JSON.stringify(body)}`] : []),
+  ].map((line) => `\n${line}`).join('');
+  const args = ['URL', ...(headers.length ? ['headers=HEADERS'] : []), ...(body !== undefined ? ['data=BODY.encode("utf-8")'] : []), 'timeout=10', 'allow_redirects=False'];
   return `import re, time, secrets, requests
 from eth_account.messages import encode_typed_data
 
 # Kite ${isTestnet ? 'Testnet' : 'Mainnet'} ${tokenSymbol} Configuration
 CHAIN_ID = ${chainId}
-URL = ${JSON.stringify(fullUrl + queryParams)}
+URL = ${JSON.stringify(fullUrl + queryParams)}${constants}
 
 # Inspect the PAYMENT-REQUIRED header separately from signing.
 def probe_service():
-    return requests.${endpoint.method.toLowerCase()}(URL, timeout=10, allow_redirects=False)
+    return requests.${endpoint.method.toLowerCase()}(${args.join(', ')})
 
 # Pass independently approved terms. This helper signs locally and returns the signature.
 def sign_authorization(account, asset, pay_to, amount):
@@ -137,12 +175,15 @@ def sign_authorization(account, asset, pay_to, amount):
 
 export function buildGoSnippet(service: ServiceManifest, endpoint: ServiceEndpoint): string {
   const { fullUrl, queryParams, chainId } = snippetContext(service, endpoint);
+  const { headers, body } = exampleRequest(endpoint);
+  // JSON string literals are valid Go interpreted string literals.
+  const headerLines = headers.map(([k, v]) => `\n\treq.Header.Set(${JSON.stringify(k)}, ${JSON.stringify(v)})`).join('');
   return `package main
 
 import (
 	"encoding/base64"
 	"fmt"
-	"net/http"
+	"net/http"${body !== undefined ? '\n\t"strings"' : ''}
 	"time"
 )
 
@@ -157,11 +198,11 @@ func main() {
 	}
 
 	// 1. Probe endpoint to trigger HTTP 402 challenge
-	req, err := http.NewRequest("${endpoint.method}", targetURL, nil)
+	req, err := http.NewRequest("${endpoint.method}", targetURL, ${body !== undefined ? `strings.NewReader(${JSON.stringify(body)})` : 'nil'})
 	if err != nil {
 		panic(err)
 	}
-	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Accept", "application/json")${headerLines}
 	resp, err := client.Do(req)
 	if err != nil {
 		panic(err)
@@ -181,6 +222,11 @@ func main() {
 
 export function buildRustSnippet(service: ServiceManifest, endpoint: ServiceEndpoint): string {
   const { fullUrl, queryParams, chainId } = snippetContext(service, endpoint);
+  const { headers, body } = exampleRequest(endpoint);
+  const requestLines = [
+    ...headers.map(([k, v]) => `\n        .header(${rustString(k)}, ${rustString(v)})`),
+    ...(body !== undefined ? [`\n        .body(${rustString(body)})`] : []),
+  ].join('');
   return `// Kite Chain (${chainId}) x402 challenge discovery in Rust (reqwest)
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use std::time::Duration;
@@ -196,7 +242,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 1. Probe endpoint to discover 402 Payment Required
     let res = client
         .${endpoint.method.toLowerCase()}(target)
-        .header(reqwest::header::ACCEPT, "application/json")
+        .header(reqwest::header::ACCEPT, "application/json")${requestLines}
         .send()
         .await?;
 
