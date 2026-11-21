@@ -9,24 +9,40 @@ function fixture() {
   let calls=0;
   let invalid=false;
   let empty=false;
+  let head = sha;
+  let displayName = INITIAL_SERVICES[0].display_name;
   const fetcher=(async(url:unknown)=>{
     calls++;
     if(fail) return new Response('offline',{status:503});
     if (String(url).endsWith('/git/ref/heads/main')) {
-      return Response.json({ref:'refs/heads/main', object:{type:'commit', sha}});
+      return Response.json({ref:'refs/heads/main', object:{type:'commit', sha:head}});
     }
     if (String(url).endsWith('/commits/main')) {
       return Response.json({sha, files:[{patch:'x'.repeat(65_536)}]});
     }
-    if(String(url).includes('/git/trees/')) return Response.json({truncated:false,tree:empty?[]:[
-      {type:'blob',path:'services/open-meteo-weather/README.md'},
-      {type:'blob',path:'services/open-meteo-weather/service.yaml'},
-      {type:'blob',path:'services/broken/service.yaml'}]});
-    assert.ok(String(url).includes('/'+sha+'/'));
+    if (String(url).includes('/git/trees/')) {
+      assert.ok(String(url).endsWith('/git/trees/' + head + '?recursive=1'));
+      return Response.json({truncated:false,tree:empty?[]:[
+        {type:'blob',path:'services/open-meteo-weather/README.md'},
+        {type:'blob',path:'services/open-meteo-weather/service.yaml'},
+        {type:'blob',path:'services/broken/service.yaml'}]});
+    }
+    assert.ok(String(url).includes('/'+head+'/'));
     if(String(url).includes('/broken/')) return new Response('name: broken');
-    return new Response(invalid?'schema: broken':JSON.stringify(INITIAL_SERVICES[0]));
+    return new Response(invalid?'schema: broken':JSON.stringify({...INITIAL_SERVICES[0], display_name:displayName}));
   }) as typeof fetch;
-  return {fetcher,calls:()=>calls,fail:()=>{fail=true;},invalid:()=>{invalid=true;},empty:()=>{empty=true;}};
+  return {
+    fetcher,
+    calls: () => calls,
+    fail: () => { fail = true; },
+    recover: (commit: string, name: string) => {
+      fail = false;
+      head = commit;
+      displayName = name;
+    },
+    invalid: () => { invalid = true; },
+    empty: () => { empty = true; },
+  };
 }
 test('official snapshots pin sources, validate manifests and coalesce concurrent requests',async()=>{
   const f=fixture();const registry=new OfficialRegistry({fetcher:f.fetcher});
@@ -36,12 +52,63 @@ test('official snapshots pin sources, validate manifests and coalesce concurrent
   assert.equal(a.registry.errors.length,1);assert.match(a.registry.sources[0].url,new RegExp('/'+sha+'/'));
   await registry.get();assert.equal(f.calls(),4);
 });
-test('failed refresh retains the last good snapshot and backs off',async()=>{
-  let clock=1_000_000;const f=fixture();const registry=new OfficialRegistry({fetcher:f.fetcher,now:()=>clock,ttlMs:1000});
-  const first=await registry.get();f.fail();clock+=2000;
-  const stale=await registry.get();assert.deepEqual(stale.services,first.services);
-  assert.equal(stale.registry.fetchedAt,first.registry.fetchedAt);assert.equal(stale.registry.stale,true);
-  const calls=f.calls();await registry.get();assert.equal(f.calls(),calls);
+test('refresh keeps the last good snapshot during backoff and replaces it when the source recovers', async () => {
+  let clock = 1_000_000;
+  const f = fixture();
+  const registry = new OfficialRegistry({fetcher:f.fetcher, now:() => clock, ttlMs:1000});
+  const first = await registry.get();
+
+  f.fail();
+  clock += 999;
+  assert.deepEqual(await registry.get(), first);
+  assert.equal(f.calls(), 4);
+
+  clock += 1;
+  const stale = await registry.get();
+  assert.deepEqual(stale.services, first.services);
+  assert.deepEqual(stale.registry, {
+    ...first.registry, stale:true, error:'Official registry returned HTTP 503',
+  });
+  assert.equal(f.calls(), 5);
+
+  const recoveredCommit = 'b'.repeat(40);
+  f.recover(recoveredCommit, 'Updated weather service');
+  clock += 29_999;
+  assert.deepEqual(await registry.get(), stale);
+  assert.equal(f.calls(), 5);
+
+  clock += 1;
+  const recovered = await registry.get();
+  assert.equal(recovered.registry.commit, recoveredCommit);
+  assert.equal(recovered.registry.fetchedAt, new Date(clock).toISOString());
+  assert.equal(recovered.registry.stale, false);
+  assert.equal(recovered.registry.error, undefined);
+  assert.equal(recovered.services[0].display_name, 'Updated weather service');
+  assert.deepEqual(recovered.registry.sources, [{
+    name:'open-meteo-weather',
+    url:`https://raw.githubusercontent.com/gokite-ai/kite-x402-services/${recoveredCommit}/services/open-meteo-weather/service.yaml`,
+  }]);
+  assert.equal(f.calls(), 9);
+});
+
+test('a pinned directory recovers from a failed first fetch without resolving main', async () => {
+  let clock = 1_000_000;
+  const f = fixture();
+  f.fail();
+  const registry = new OfficialRegistry({fetcher:f.fetcher, now:() => clock, commit:sha});
+  const unavailable = await registry.get();
+  assert.deepEqual(unavailable.services, []);
+  assert.equal(unavailable.registry.commit, null);
+  assert.equal(unavailable.registry.stale, true);
+
+  f.recover(sha, 'Pinned weather service');
+  clock += 30_000;
+  const recovered = await registry.get();
+  assert.equal(recovered.registry.commit, sha);
+  assert.equal(recovered.registry.stale, false);
+  assert.equal(recovered.registry.error, undefined);
+  assert.equal(recovered.services[0].display_name, 'Pinned weather service');
+  assert.equal(f.calls(), 4, 'one failed tree request, then a tree and two manifests');
 });
 test('invalid first snapshot never falls back to demo and an empty official registry stays empty',async()=>{
   const bad=fixture();bad.invalid();const result=await new OfficialRegistry({fetcher:bad.fetcher}).get();
