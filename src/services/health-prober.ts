@@ -1,5 +1,6 @@
 import type { ServiceManifest } from '../types/service.js';
 import type { ServiceHealthStatus } from '../types/health.js';
+import {isProbeResult} from '../types/probe.js';
 
 const HEALTH_CACHE_KEY = 'kite_x402_health_cache_v1';
 const EXPECTED_ASSETS: Record<string,string> = {
@@ -14,30 +15,48 @@ export async function probeServiceHealth(service: ServiceManifest): Promise<Serv
   const timeout = setTimeout(() => controller.abort(), 4500);
   const base = {serviceName:service.name, networkMatched:false, assetMatched:false,
     facilitatorReachable:false, lastCheckedAt:new Date().toISOString(),
-    endpointChecked:service.base_url || '/healthz'};
+    endpointChecked:'/healthz'};
+  let failedHttpStatus: number | null = null;
   try {
-    base.endpointChecked = service.base_url ? new URL('/healthz',service.base_url).href : '/healthz';
+    if (service.base_url) base.endpointChecked = new URL('/healthz', service.base_url).href;
     const response = await fetch('/api/probe/' + encodeURIComponent(service.name), {
       headers:{Accept:'application/json'}, signal:controller.signal,
     });
-    if (!response.ok) return {...base,status:'down',httpStatus:response.status,
-      latencyMs:Math.max(1,Math.round(performance.now()-started)),
-      details:'Probe failed with HTTP ' + response.status};
-    const data = await response.json();
+    if (!response.ok) {
+      failedHttpStatus = response.status;
+      const contentType = response.headers.get('content-type')?.split(';', 1)[0].trim().toLowerCase();
+      if (contentType !== 'application/json' && !contentType?.endsWith('+json')) {
+        return {...base,status:'down',httpStatus:response.status,
+          latencyMs:Math.max(1,Math.round(performance.now()-started)),
+          details:'Probe failed with HTTP ' + response.status};
+      }
+    }
+    const data: unknown = await response.json();
     const latencyMs = Math.max(1,Math.round(performance.now()-started));
-    const observed = data?.source === 'live';
-    const networkMatched = observed && data.network === service.network && data.networkMatched === true;
-    const assetMatched = observed && typeof data.asset === 'string' &&
+    if (!isProbeResult(data) || data.serviceName !== service.name ||
+        (data.kind === 'observed' && data.endpoint !== base.endpointChecked)) {
+      return {...base,status:'down',httpStatus:response.status,latencyMs,
+        details:response.ok ? 'Invalid or mismatched probe result' : 'Probe failed with HTTP ' + response.status};
+    }
+    if (data.kind === 'unavailable') return {...base,status:'down',httpStatus:response.status,latencyMs,
+      lastCheckedAt:data.checkedAt,details:'Probe unavailable: ' + data.reason.replaceAll('_',' ')};
+    if (!response.ok || data.httpStatus < 200 || data.httpStatus >= 300) {
+      const httpStatus = data.httpStatus >= 200 && data.httpStatus < 300 ? response.status : data.httpStatus;
+      return {...base,status:'down',httpStatus,latencyMs,lastCheckedAt:data.checkedAt,
+        details:'Probe failed with HTTP ' + httpStatus};
+    }
+    const networkMatched = data.network === service.network && data.networkMatched === true;
+    const assetMatched = typeof data.asset === 'string' &&
       data.asset.toLowerCase() === EXPECTED_ASSETS[service.network]?.toLowerCase() && data.assetMatched === true;
-    const facilitatorReachable = observed && data.facilitatorReachable === true;
+    const facilitatorReachable = data.facilitatorReachable === true;
     const healthy = networkMatched && assetMatched && facilitatorReachable;
     return {...base,status:healthy && latencyMs < 750 ? 'healthy' : 'degraded',latencyMs,
-      httpStatus:response.status,networkMatched,assetMatched,facilitatorReachable,
+      httpStatus:data.httpStatus,lastCheckedAt:data.checkedAt,networkMatched,assetMatched,facilitatorReachable,
       details:healthy ? (latencyMs < 750 ? 'Live service and facilitator checks passed' : 'Live checks passed with high latency')
         : 'Live network, asset or facilitator verification is missing or failed'};
   } catch {
-    return {...base,status:'down',httpStatus:null,latencyMs:Math.max(1,Math.round(performance.now()-started)),
-      details:'Live probe unavailable, invalid or timed out'};
+    return {...base,status:'down',httpStatus:failedHttpStatus,latencyMs:Math.max(1,Math.round(performance.now()-started)),
+      details:failedHttpStatus === null ? 'Live probe unavailable, invalid or timed out' : 'Probe failed with HTTP ' + failedHttpStatus};
   } finally {clearTimeout(timeout);}
 }
 

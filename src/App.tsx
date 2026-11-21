@@ -17,11 +17,32 @@ import {
 } from './services/health-prober.js';
 import { getStoredProofs, subscribeToProofs } from './services/proof-logger.js';
 
+export type DirectoryFeedbackState = {
+  kind: 'loading' | 'ready' | 'empty' | 'stale' | 'failed';
+  message: string;
+};
+
+export const DirectoryFeedback: React.FC<{state: DirectoryFeedbackState}> = ({state}) => {
+  const heading = {
+    loading: 'Loading service directory', ready: 'Directory loaded',
+    empty: 'No directory entries', stale: 'Stale directory snapshot',
+    failed: 'Directory unavailable',
+  }[state.kind];
+  return (
+    <p role={state.kind === 'failed' ? 'alert' : 'status'}
+      aria-live={state.kind === 'failed' ? 'assertive' : 'polite'} aria-atomic="true">
+      <strong>{heading}.</strong>{state.message ? ` ${state.message}` : ''}
+    </p>
+  );
+};
+
 export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<NavTab>('directory');
   const [selectedNetwork, setSelectedNetwork] = useState<'all' | 'testnet' | 'mainnet'>('all');
   const [services, setServices] = useState<ServiceManifest[]>([]);
-  const [directoryNote, setDirectoryNote] = useState('Loading service directory…');
+  const [directoryState, setDirectoryState] = useState<DirectoryFeedbackState>({
+    kind:'loading',message:'',
+  });
   const [directorySource, setDirectorySource] = useState<'demo'|'official'|null>(null);
   const localServices = useRef(new Map<string,ServiceManifest>());
   const [selectedService, setSelectedService] = useState<ServiceManifest | null>(null);
@@ -41,16 +62,30 @@ export const App: React.FC = () => {
 
   useEffect(() => {
     let active = true;
+    let hasSnapshot = false;
+    let lastSnapshotCount = 0;
     const refresh = async () => {
       try {
         const directory = await loadDirectory();
         if (active) {
           const merged = new Map(directory.services.map(service => [service.name,service]));
           for (const [name,service] of localServices.current) merged.set(name,service);
-          setServices([...merged.values()]);setDirectoryNote(directory.note);setDirectorySource(directory.source);
+          hasSnapshot = true;
+          lastSnapshotCount = merged.size;
+          setServices([...merged.values()]);
+          setDirectorySource(directory.source);
+          setDirectoryState({
+            kind:directory.stale ? 'stale' : merged.size === 0 ? 'empty' : 'ready',
+            message:directory.note,
+          });
         }
       } catch (error) {
-        if (active) setDirectoryNote('Directory refresh failed; any previously loaded entries may be stale. ' + String(error));
+        if (active) setDirectoryState({
+          kind:hasSnapshot ? 'stale' : 'failed',
+          message:(hasSnapshot
+            ? lastSnapshotCount > 0 ? 'Showing previously loaded entries. ' : 'The last directory was empty. '
+            : '') + String(error),
+        });
       }
     };
     void refresh();
@@ -123,6 +158,14 @@ export const App: React.FC = () => {
     });
   };
 
+  let directoryDisplayState = directoryState;
+  if (services.length > 0 && directoryState.kind === 'empty') {
+    directoryDisplayState = {kind:'ready', message:'Showing locally added entries. The source directory was empty.'};
+  }
+  if (services.length > 0 && directoryState.kind === 'failed') {
+    directoryDisplayState = {...directoryState, message:'Showing locally added entries. ' + directoryState.message};
+  }
+
   return (
     <div className="app-container">
       <Navbar
@@ -135,20 +178,22 @@ export const App: React.FC = () => {
       />
 
       <main className="main-content">
-        <p role="status">{directoryNote}</p>
-        {activeTab === 'directory' && (
-          <DirectoryView
-            services={services}
-            healthMap={healthMap}
-            isProbing={isProbing}
-            onRunBatchProbe={handleRunBatchProbe}
-            autoRefreshInterval={autoRefreshInterval}
-            onChangeAutoRefresh={setAutoRefreshInterval}
-            selectedNetwork={selectedNetwork}
-            onSelectService={(srv) => setSelectedService(srv)}
-            onOpenPlayground={(srv) => handleOpenPlayground(srv)}
-          />
-        )}
+        {activeTab === 'directory' && <DirectoryFeedback state={directoryDisplayState} />}
+        {activeTab === 'directory' && <div aria-busy={directoryDisplayState.kind === 'loading'}>
+          {services.length > 0 && (
+            <DirectoryView
+              services={services}
+              healthMap={healthMap}
+              isProbing={isProbing}
+              onRunBatchProbe={handleRunBatchProbe}
+              autoRefreshInterval={autoRefreshInterval}
+              onChangeAutoRefresh={setAutoRefreshInterval}
+              selectedNetwork={selectedNetwork}
+              onSelectService={(srv) => setSelectedService(srv)}
+              onOpenPlayground={(srv) => handleOpenPlayground(srv)}
+            />
+          )}
+        </div>}
 
         {activeTab === 'playground' && directorySource !== 'demo' && <p>The demo payment playground is unavailable for this directory source. Directory metadata does not verify a payment destination.</p>}
         {activeTab === 'playground' && directorySource === 'demo' && services.length === 0 && <p>No directory entries are available for the playground.</p>}
