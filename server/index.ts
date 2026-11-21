@@ -7,6 +7,7 @@ import { parseAndValidateManifest } from '../src/services/manifest-loader.js';
 import { buildMockSettlement } from './mock-settlement.js';
 import { OfficialRegistry } from './official-registry.js';
 import { FACILITATOR_URL, parseServerConfig } from './config.js';
+import type { ObservedProbeResult, UnavailableProbeResult } from '../src/types/probe.js';
 
 dotenv.config();
 
@@ -44,10 +45,6 @@ app.use((error: unknown, _req: Request, res: Response, next: NextFunction) => {
 });
 
 const officialRegistry = new OfficialRegistry({commit: registryCommit});
-app.use('/api/probe', (_req, res, next) => {
-  if (registrySource === 'official') {res.status(503).json({status:'unavailable',source:'official',error:'Live registry probing is not configured'});return;}
-  next();
-});
 app.use('/api/mock-x402', (_req, res, next) => {
   if (registrySource === 'official') {res.status(409).json({error:'The demo payment simulator is disabled for the official directory'});return;}
   next();
@@ -91,8 +88,17 @@ app.post('/api/validate-manifest', (req, res) => {
 
 // Dedicated health probe endpoint for service monitoring
 app.get('/api/probe/:serviceName', async (req: Request, res: Response) => {
-  const srv = INITIAL_SERVICES.find(service => service.name === req.params.serviceName);
-  if (!srv?.base_url) { res.status(404).json({error: 'Service has no registered probe target'}); return; }
+  const serviceName = Array.isArray(req.params.serviceName)
+    ? req.params.serviceName[0] ?? '' : req.params.serviceName;
+  const unavailable = (reason: UnavailableProbeResult['reason']): UnavailableProbeResult => ({
+    kind: 'unavailable', source: 'none', serviceName,
+    checkedAt: new Date().toISOString(), reason,
+  });
+  if (registrySource === 'official') {
+    res.status(503).json(unavailable('official_disabled')); return;
+  }
+  const srv = INITIAL_SERVICES.find(service => service.name === serviceName);
+  if (!srv?.base_url) { res.status(404).json(unavailable('target_missing')); return; }
   try {
     const [health, supported] = await Promise.all([
       requestPublic(new URL('/healthz', srv.base_url).href, {allowedOrigins}),
@@ -106,12 +112,16 @@ app.get('/api/probe/:serviceName', async (req: Request, res: Response) => {
     const assetMatched = typeof data.asset === 'string' && data.asset.toLowerCase() === expectedAsset.toLowerCase();
     const facilitatorReachable = supported.status === 200 && Array.isArray(capabilities.kinds) && capabilities.kinds.some(
       (kind: {network?:string; scheme?:string; x402Version?:number}) => kind.network === srv.network && kind.scheme === 'exact' && kind.x402Version === 2);
-    res.status(health.status >= 200 && health.status < 300 ? 200 : 502).json({source:'live', service:srv.name,
-      httpStatus:health.status, network:data.network, asset:data.asset, networkMatched, assetMatched, facilitatorReachable,
-      endpoint:new URL('/healthz',srv.base_url).href, timestamp:new Date().toISOString()});
+    const result: ObservedProbeResult = {
+      kind:'observed', source:'live', serviceName:srv.name, checkedAt:new Date().toISOString(),
+      endpoint:new URL('/healthz',srv.base_url).href, httpStatus:health.status,
+      network:typeof data.network === 'string' ? data.network : null,
+      asset:typeof data.asset === 'string' ? data.asset : null,
+      networkMatched, assetMatched, facilitatorReachable,
+    };
+    res.status(health.status >= 200 && health.status < 300 ? 200 : 502).json(result);
   } catch {
-    res.status(502).json({source:'live', service:srv.name, status:'unavailable', networkMatched:false,
-      assetMatched:false, facilitatorReachable:false, timestamp:new Date().toISOString()});
+    res.status(502).json(unavailable('upstream_error'));
   }
 });
 

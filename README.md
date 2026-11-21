@@ -22,8 +22,10 @@ minute; the server refreshes at most every five minutes and coalesces concurrent
 requests. A failed refresh retains the last good process-local snapshot and backs
 off for 30 seconds. An unsuccessful first fetch returns 503 with no demo fallback.
 Snapshots reset on restart. Invalid manifests are excluded with per-file errors;
-transport failures retain the entire previous snapshot. Work is capped at 200
-manifests, four concurrent reads, 64 KiB per manifest and a 12-second deadline.
+transport failures and trees with duplicate names or invalid manifest paths
+retain the entire previous snapshot. Registry work is capped at 10,000 tree
+entries, 200 manifests, four concurrent reads, 64 KiB per manifest and a
+12-second deadline.
 
 Official directory entries are registration metadata, not verified payment
 destinations. The payment simulator is disabled in official mode and probes

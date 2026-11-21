@@ -57,6 +57,14 @@ const { count, services } = await servicesResponse.json();
 assert.ok(count > 0, 'The bundled service registry should be available');
 assert.equal(count, services.length);
 
+const missingProbeResponse = await request('/api/probe/no-such-service');
+assert.equal(missingProbeResponse.status, 404);
+const missingProbe = await missingProbeResponse.json();
+assert.deepEqual({kind:missingProbe.kind,source:missingProbe.source,
+  serviceName:missingProbe.serviceName,reason:missingProbe.reason},
+{kind:'unavailable',source:'none',serviceName:'no-such-service',reason:'target_missing'});
+assert.ok(Number.isFinite(Date.parse(missingProbe.checkedAt)));
+
 const validationResponse = await request('/api/validate-manifest', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },

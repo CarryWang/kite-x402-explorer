@@ -3,6 +3,16 @@ import type {ServiceManifest} from '../src/types/service.js';
 
 const repository = 'gokite-ai/kite-x402-services';
 const api = 'https://api.github.com/repos/' + repository;
+const MAX_TREE_ENTRIES = 10_000;
+const MAX_MANIFESTS = 200;
+
+interface RegistryTreeEntry {
+  path: string;
+  type: string;
+  mode?: string;
+  size?: number;
+}
+
 export interface RegistrySnapshot {
   services: ServiceManifest[];
   registry: {source:'official';commit:string|null;fetchedAt:string|null;stale:boolean;
@@ -49,13 +59,40 @@ export class OfficialRegistry {
     const signal=AbortSignal.timeout(12000);
     this.nextRefresh=now()+30_000;
     try {
-      const head=this.options.commit ?? (JSON.parse(await read(api+'/commits/main',fetcher,65536,signal)) as {sha:string}).sha;
-      if(!/^[a-f0-9]{40}$/i.test(head)) throw new Error('Invalid official registry commit');
-      const tree=JSON.parse(await read(api+'/git/trees/'+head+'?recursive=1',fetcher,2*1024*1024,signal)) as {
-        truncated?:boolean;tree?:{path:string;type:string;size?:number}[]};
-      if(tree.truncated || !Array.isArray(tree.tree)) throw new Error('Incomplete official registry tree');
-      const files=tree.tree.filter(file=>file.type==='blob' && /^services\/[a-z0-9][a-z0-9-]*\/service\.yaml$/.test(file.path));
-      if(files.length>200) throw new Error('Official registry exceeds the 200-manifest limit');
+      let head = this.options.commit;
+      if (head === undefined) {
+        const reference = JSON.parse(await read(api + '/git/ref/heads/main', fetcher, 65536, signal)) as {
+          object?: {type?: string; sha?: string};
+        };
+        if (reference.object?.type === 'commit') head = reference.object.sha;
+      }
+      if (typeof head !== 'string' || !/^[a-f0-9]{40}$/i.test(head)) throw new Error('Invalid official registry commit');
+      const tree = JSON.parse(await read(api + '/git/trees/' + head + '?recursive=1', fetcher, 2 * 1024 * 1024, signal)) as {
+        truncated?: boolean;
+        tree?: RegistryTreeEntry[];
+      };
+      if (tree.truncated || !Array.isArray(tree.tree)) throw new Error('Incomplete official registry tree');
+      if (tree.tree.length > MAX_TREE_ENTRIES) throw new Error('Official registry tree exceeds the 10,000-entry limit');
+
+      const files: RegistryTreeEntry[] = [];
+      const names = new Set<string>();
+      for (const entry of tree.tree) {
+        if (!entry || typeof entry.path !== 'string') throw new Error('Invalid official registry tree entry');
+        if (!entry.path.startsWith('services/') || !entry.path.endsWith('/service.yaml')) continue;
+
+        const parts = entry.path.split('/');
+        const name = parts[1];
+        if (parts.length !== 3 || !/^[a-z0-9][a-z0-9-]{1,63}$/.test(name)) {
+          throw new Error('Invalid official registry manifest path');
+        }
+        if (entry.type !== 'blob' || (entry.mode !== undefined && !['100644', '100755'].includes(entry.mode))) {
+          throw new Error('Invalid official registry manifest file');
+        }
+        if (names.has(name)) throw new Error('Duplicate official registry service: ' + name);
+        names.add(name);
+        files.push(entry);
+      }
+      if (files.length > MAX_MANIFESTS) throw new Error('Official registry exceeds the 200-manifest limit');
       const results:{path:string;manifest?:ServiceManifest;url:string;error?:string}[]=[];
       for(let offset=0;offset<files.length;offset+=4) {
         results.push(...await Promise.all(files.slice(offset,offset+4).map(async file=>{
