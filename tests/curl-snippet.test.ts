@@ -42,6 +42,11 @@ for (const fixture of [
   { name: 'zero JSON body', method: 'PUT', path: '/v1/search', body: 0 },
   { name: 'null JSON body', method: 'PATCH', path: '/v1/search', body: null },
   { name: 'GET ignores body', method: 'GET', path: '/v1/search', body: { unused: true } },
+  { name: 'example headers', method: 'POST', path: '/v1/search',
+    headers: { 'X-Api-Version': '2', Authorization: "Bearer O'Reilly $HOME" }, body: { q: 1 } },
+  { name: 'example headers on GET', method: 'GET', path: '/v1/search', headers: { 'X-Api-Version': '2' } },
+  { name: 'example content type', method: 'POST', path: '/v1/search',
+    headers: { 'content-type': 'application/json; charset=utf-8' }, body: { q: 1 } },
 ] as const) {
   test(`cURL preserves arguments for ${fixture.name}`, {
     skip: !shell || !existsSync(shell) ? 'Set POSIX_SHELL to a POSIX shell on Windows' : false,
@@ -50,6 +55,7 @@ for (const fixture of [
       method: fixture.method, path: fixture.path, summary: 'Fixture', price_usd: '0.001',
       example_request: {
         ...('query' in fixture ? { query: fixture.query } : {}),
+        ...('headers' in fixture ? { headers: fixture.headers } : {}),
         ...('body' in fixture ? { body: fixture.body } : {}),
       },
     };
@@ -61,13 +67,16 @@ for (const fixture of [
     assert.equal(result.status, 0, result.stderr);
     const url = service.base_url + fixture.path + ('query' in fixture
       ? '?' + new URLSearchParams(fixture.query).toString() : '');
-    const first = ['--globoff', '-i', '-X', fixture.method, url, '-H', 'Accept: application/json'];
-    const second = [...first, '-H', 'PAYMENT-SIGNATURE: <base64-encoded-eip3009-authorization>'];
+    const base = ['--globoff', '-i', '-X', fixture.method, url, '-H', 'Accept: application/json'];
+    const example = Object.entries('headers' in fixture ? fixture.headers : {}).flatMap(([k, v]) => ['-H', `${k}: ${v}`]);
     if (fixture.method !== 'GET' && 'body' in fixture) {
-      const body = ['-H', 'Content-Type: application/json', '-d', JSON.stringify(fixture.body)];
-      first.push(...body);
-      second.push(...body);
+      if (!example.some((arg) => arg.toLowerCase().startsWith('content-type:'))) {
+        example.push('-H', 'Content-Type: application/json');
+      }
+      example.push('-d', JSON.stringify(fixture.body));
     }
+    const first = [...base, ...example];
+    const second = [...base, '-H', 'PAYMENT-SIGNATURE: <base64-encoded-eip3009-authorization>', ...example];
     assert.equal(result.stdout, first.join('\0') + '\0\0' + second.join('\0') + '\0\0');
   });
 }
