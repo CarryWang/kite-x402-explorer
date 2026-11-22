@@ -71,6 +71,7 @@ For behavior changes, write a failing regression test, run it, implement the sco
 | 7 | `feat: show directory loading and stale states` | 264/264 passed | passed | Distinct accessible loading, unavailable, empty and stale notices; hide misleading empty results while loading or unavailable. Reviewed open PRs #66 and #67. Days 4 and 6 have no daily commits and remain for weekly review. |
 | 8 | `fix: reject ambiguous registry entries` | 269/269 passed. Demo and official production smoke checks passed. | passed | Rejects duplicate names, invalid manifest paths and file types, and trees above 10,000 entries. Uses the GitHub branch reference to resolve the snapshot commit within the existing response limit. |
 | 9 | `test: cover registry refresh and recovery` | 270/270 passed | passed | Tests expiry, the stale snapshot during backoff, recovery to a newer commit, and recovery from a cold start with a pinned commit. |
+| 10 | `feat: display registry provenance` | 294/294 passed | passed | The directory details show the full source commit, last successful fetch, refresh errors, and errors for excluded manifests. A failed refresh preserves the previous snapshot's provenance. |
 
 Append one row before each later day's single commit.
 
