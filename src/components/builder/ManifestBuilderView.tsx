@@ -6,7 +6,7 @@ import type {
   HttpMethod,
   ServiceEndpoint,
 } from '../../types/service.js';
-import { validateServiceManifest } from '../../services/schema-validator.js';
+import { validateServiceManifest, type ValidationResult } from '../../services/schema-validator.js';
 import { dumpManifestToYaml } from '../../services/manifest-loader.js';
 import { PRSubmissionModal } from './PRSubmissionModal.js';
 import {
@@ -23,6 +23,31 @@ import {
   Play,
   Layers,
 } from 'lucide-react';
+
+/** Submit button that stays disabled until the manifest passes the official schema. */
+export const SubmitPrButton: React.FC<{
+  validation: ValidationResult;
+  onSubmit: () => void;
+}> = ({ validation, onSubmit }) => {
+  const issueCount = validation.errors.length;
+  return (
+    <button
+      className="btn btn-primary"
+      onClick={onSubmit}
+      disabled={!validation.valid}
+      aria-disabled={!validation.valid}
+      title={validation.valid ? undefined : `Fix ${issueCount} schema issue(s) before submitting`}
+      style={{
+        fontSize: '0.82rem',
+        padding: '0.6rem 1rem',
+        ...(validation.valid ? {} : { opacity: 0.5, cursor: 'not-allowed' }),
+      }}
+    >
+      <GitPullRequest size={14} />
+      <span>{validation.valid ? 'Submit PR to Kite' : `Fix ${issueCount} issue(s) to submit`}</span>
+    </button>
+  );
+};
 
 interface ManifestBuilderViewProps {
   onTestInPlayground: (manifest: ServiceManifest) => void;
@@ -826,14 +851,7 @@ export const ManifestBuilderView: React.FC<ManifestBuilderViewProps> = ({
               <span>Simulate in Playground</span>
             </button>
 
-            <button
-              className="btn btn-primary"
-              onClick={() => setIsPrModalOpen(true)}
-              style={{ fontSize: '0.82rem', padding: '0.6rem 1rem' }}
-            >
-              <GitPullRequest size={14} />
-              <span>Submit PR to Kite</span>
-            </button>
+            <SubmitPrButton validation={validationResult} onSubmit={() => setIsPrModalOpen(true)} />
           </div>
         </div>
       </div>

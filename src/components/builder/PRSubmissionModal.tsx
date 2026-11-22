@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import type { ServiceManifest } from '../../types/service.js';
+import { validateServiceManifest } from '../../services/schema-validator.js';
 import {
   X,
   GitPullRequest,
@@ -28,6 +29,9 @@ export const PRSubmissionModal: React.FC<PRSubmissionModalProps> = ({
   const [copiedPrBody, setCopiedPrBody] = useState(false);
 
   if (!isOpen) return null;
+
+  // Never hand out a submission link for a manifest the official schema rejects.
+  const validation = validateServiceManifest(manifest);
 
   const githubNewFileUrl = `https://github.com/gokite-ai/kite-x402-services/new/main?filename=services/${encodeURIComponent(
     manifest.name
@@ -155,6 +159,34 @@ ${manifest.endpoints.map((ep) => `- \`${ep.method} ${ep.path}\` ($${ep.price_usd
           </div>
         </div>
 
+        {!validation.valid ? (
+          <div
+            role="alert"
+            style={{
+              background: 'rgba(244, 63, 94, 0.08)',
+              border: '1px solid rgba(244, 63, 94, 0.3)',
+              borderRadius: 'var(--radius-md)',
+              padding: '1rem 1.25rem',
+              margin: '1.25rem 0',
+              fontSize: '0.85rem',
+            }}
+          >
+            <strong style={{ color: 'var(--accent-rose)' }}>
+              Submission blocked: {validation.errors.length} schema issue(s)
+            </strong>
+            <p style={{ color: 'var(--text-secondary)', margin: '0.5rem 0' }}>
+              The official registry CI rejects manifests that fail <code>service.schema.json</code>. Fix these in the builder first:
+            </p>
+            <ul style={{ margin: 0, paddingLeft: '1.25rem', fontFamily: 'var(--font-mono)', fontSize: '0.75rem' }}>
+              {validation.errors.map((err, i) => (
+                <li key={i}>
+                  {err.path || 'root'}: {err.message}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : (
+        <>
         {/* Target Path Banner */}
         <div
           style={{
@@ -298,6 +330,8 @@ ${manifest.endpoints.map((ep) => `- \`${ep.method} ${ep.path}\` ($${ep.price_usd
             </pre>
           </div>
         </div>
+        </>
+        )}
 
         {/* Footer Actions */}
         <div style={{ marginTop: '1.5rem', display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
