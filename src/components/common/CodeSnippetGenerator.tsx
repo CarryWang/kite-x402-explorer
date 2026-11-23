@@ -141,7 +141,9 @@ console.log(\`Issued ticket nonce \${ticket.sequenceNonce}, cumulative: \${ticke
   };
 
   const activeCode = getActiveCode();
-  const copyStatus = copyResult?.text === activeCode ? copyResult.status : 'idle';
+  const copyStatus = copyResult?.status === 'pending' || copyResult?.text === activeCode
+    ? copyResult.status
+    : 'idle';
 
   return (
     <div style={{ marginTop: '1rem' }}>
@@ -311,7 +313,7 @@ console.log(\`Issued ticket nonce \${ticket.sequenceNonce}, cumulative: \${ticke
         </pre>
         <button
           onClick={() => handleCopy(activeCode)}
-          disabled={copyResult?.status === 'pending'}
+          disabled={copyStatus === 'pending'}
           style={{
             position: 'absolute',
             top: '8px',
