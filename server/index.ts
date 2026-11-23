@@ -6,15 +6,15 @@ import { INITIAL_SERVICES } from '../src/services/sample-services.js';
 import { parseAndValidateManifest } from '../src/services/manifest-loader.js';
 import { buildMockSettlement } from './mock-settlement.js';
 import { OfficialRegistry } from './official-registry.js';
-import { FACILITATOR_URL, parseServerConfig } from './config.js';
-import type { ObservedProbeResult, UnavailableProbeResult } from '../src/types/probe.js';
+import { parseServerConfig } from './config.js';
+import { probeRegisteredService } from './service-probe.js';
 
 dotenv.config();
 
 const app = express();
 const port = Number(process.env.PORT || 3001);
-const facilitator = FACILITATOR_URL;
-const { registrySource, registryCommit, allowedOrigins } = parseServerConfig(process.env);
+const config = parseServerConfig(process.env);
+const { registrySource, registryCommit, allowedOrigins } = config;
 
 app.use(cors({
   exposedHeaders: ['PAYMENT-REQUIRED', 'PAYMENT-RESPONSE', 'payment-required', 'payment-response'],
@@ -90,39 +90,9 @@ app.post('/api/validate-manifest', (req, res) => {
 app.get('/api/probe/:serviceName', async (req: Request, res: Response) => {
   const serviceName = Array.isArray(req.params.serviceName)
     ? req.params.serviceName[0] ?? '' : req.params.serviceName;
-  const unavailable = (reason: UnavailableProbeResult['reason']): UnavailableProbeResult => ({
-    kind: 'unavailable', source: 'none', serviceName,
-    checkedAt: new Date().toISOString(), reason,
-  });
-  if (registrySource === 'official') {
-    res.status(503).json(unavailable('official_disabled')); return;
-  }
-  const srv = INITIAL_SERVICES.find(service => service.name === serviceName);
-  if (!srv?.base_url) { res.status(404).json(unavailable('target_missing')); return; }
-  try {
-    const [health, supported] = await Promise.all([
-      requestPublic(new URL('/healthz', srv.base_url).href, {allowedOrigins}),
-      requestPublic(facilitator + '/supported', {allowedOrigins}),
-    ]);
-    const data = JSON.parse(health.body.toString());
-    const capabilities = JSON.parse(supported.body.toString());
-    const expectedAsset = srv.network === 'eip155:2368'
-      ? '0x38129cf4CE5E183eFF248F42A7D345Bb1B47621A' : '0x7aB6f3ed87C42eF0aDb67Ed95090f8bF5240149e';
-    const networkMatched = data.network === srv.network;
-    const assetMatched = typeof data.asset === 'string' && data.asset.toLowerCase() === expectedAsset.toLowerCase();
-    const facilitatorReachable = supported.status === 200 && Array.isArray(capabilities.kinds) && capabilities.kinds.some(
-      (kind: {network?:string; scheme?:string; x402Version?:number}) => kind.network === srv.network && kind.scheme === 'exact' && kind.x402Version === 2);
-    const result: ObservedProbeResult = {
-      kind:'observed', source:'live', serviceName:srv.name, checkedAt:new Date().toISOString(),
-      endpoint:new URL('/healthz',srv.base_url).href, httpStatus:health.status,
-      network:typeof data.network === 'string' ? data.network : null,
-      asset:typeof data.asset === 'string' ? data.asset : null,
-      networkMatched, assetMatched, facilitatorReachable,
-    };
-    res.status(health.status >= 200 && health.status < 300 ? 200 : 502).json(result);
-  } catch {
-    res.status(502).json(unavailable('upstream_error'));
-  }
+  res.setHeader('Cache-Control', 'no-store');
+  const {status, result} = await probeRegisteredService(serviceName, config, () => officialRegistry.get());
+  res.status(status).json(result);
 });
 
 // Local mock x402 simulator endpoint for end-to-end sandbox testing

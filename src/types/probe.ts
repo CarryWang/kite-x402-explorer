@@ -13,7 +13,11 @@ export interface ObservedProbeResult {
   facilitatorReachable: boolean;
 }
 
-export type ProbeUnavailableReason = 'official_disabled' | 'target_missing' | 'upstream_error';
+const probeUnavailableReasons = [
+  'official_disabled', 'registry_unavailable', 'origin_not_approved', 'target_missing', 'upstream_error',
+] as const;
+
+export type ProbeUnavailableReason = typeof probeUnavailableReasons[number];
 
 export interface UnavailableProbeResult {
   kind: 'unavailable';
@@ -32,7 +36,7 @@ export function isProbeResult(value: unknown): value is ProbeResult {
       typeof result.checkedAt !== 'string' || !Number.isFinite(Date.parse(result.checkedAt))) return false;
   if (result.kind === 'unavailable') {
     return result.source === 'none' && typeof result.reason === 'string' &&
-      ['official_disabled', 'target_missing', 'upstream_error'].includes(result.reason);
+      probeUnavailableReasons.some(reason => reason === result.reason);
   }
   return result.kind === 'observed' && result.source === 'live' &&
     typeof result.endpoint === 'string' &&

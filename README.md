@@ -28,10 +28,13 @@ entries, 200 manifests, four concurrent reads, 64 KiB per manifest and a
 12-second deadline.
 
 Official directory entries are registration metadata, not verified payment
-destinations. The payment simulator is disabled in official mode and probes
-report unavailable until live probing is configured. This change does not submit
-payments or verify availability. The official catalog currently contains draft
-entries, so deployments must not interpret catalog membership as readiness.
+destinations. The payment simulator is disabled in official mode. Live probes
+are disabled by default. Set `OFFICIAL_PROBE_ALLOWED_ORIGINS` to a comma-separated
+list of approved HTTPS origins. Include both the approved service origin and
+`https://facilitator.pieverse.io` to probe that service. The server uses the
+current official snapshot and sends GET requests to the service's `/healthz`
+and the facilitator's `/v2/supported`. A missing or stale snapshot prevents
+probing. This list is separate from the general relay allowlist.
 
 ### Key Capabilities
 
