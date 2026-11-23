@@ -33,12 +33,18 @@ export const PRSubmissionModal: React.FC<PRSubmissionModalProps> = ({
     manifest.name
   )}/service.yaml&value=${encodeURIComponent(yamlContent)}`;
 
-  const cliCommands = `# 1. Clone the official Kite x402 registry
-git clone https://github.com/gokite-ai/kite-x402-services.git
+  // Contributors cannot push to gokite-ai/kite-x402-services, so the script works from a fork.
+  const cliCommands = `# Requires the GitHub CLI, signed in (gh auth login).
+# Without it: fork gokite-ai/kite-x402-services on github.com, clone your fork, and push there.
+
+# 1. Fork the official Kite x402 registry and clone your fork
+#    (origin = your fork, upstream = gokite-ai/kite-x402-services)
+gh repo fork gokite-ai/kite-x402-services --clone
 cd kite-x402-services
 
-# 2. Create feature branch
-git checkout -b add-service-${manifest.name}
+# 2. Branch from the latest upstream main, not your fork's possibly stale copy
+git fetch upstream
+git checkout -b add-service-${manifest.name} upstream/main
 
 # 3. Create service directory and paste service.yaml
 mkdir -p services/${manifest.name}
@@ -46,10 +52,13 @@ cat << 'EOF' > services/${manifest.name}/service.yaml
 ${yamlContent}
 EOF
 
-# 4. Commit and push
+# 4. Commit and push to your fork
 git add services/${manifest.name}/service.yaml
 git commit -m "feat(services): add ${manifest.name} manifest"
-git push origin add-service-${manifest.name}`;
+git push -u origin add-service-${manifest.name}
+
+# 5. Open the pull request against the official registry (paste the PR body below)
+gh pr create --repo gokite-ai/kite-x402-services --base main --title "feat(services): add ${manifest.name} manifest"`;
 
   const prBody = `### New x402 Service Registration
 
