@@ -1,11 +1,10 @@
-import React, { useState } from 'react';
+import React from 'react';
+import { ClipboardCopyButton } from './ClipboardCopyButton.js';
 import type { ServiceManifest } from '../../types/service.js';
 import {
   X,
   GitPullRequest,
   ExternalLink,
-  Copy,
-  Check,
   Terminal,
   FileText,
   ShieldCheck,
@@ -24,8 +23,6 @@ export const PRSubmissionModal: React.FC<PRSubmissionModalProps> = ({
   manifest,
   yamlContent,
 }) => {
-  const [copiedCli, setCopiedCli] = useState(false);
-  const [copiedPrBody, setCopiedPrBody] = useState(false);
 
   if (!isOpen) return null;
 
@@ -69,18 +66,6 @@ ${manifest.endpoints.map((ep) => `- \`${ep.method} ${ep.path}\` ($${ep.price_usd
 - [x] Manifest conforms to \`service.schema.json\`
 - [x] Tested in Kite x402 Explorer & Playground
 - [x] Endpoints respond with valid HTTP 402 challenge when unpaid`;
-
-  const handleCopyCli = async () => {
-    await navigator.clipboard.writeText(cliCommands);
-    setCopiedCli(true);
-    setTimeout(() => setCopiedCli(false), 2000);
-  };
-
-  const handleCopyPrBody = async () => {
-    await navigator.clipboard.writeText(prBody);
-    setCopiedPrBody(true);
-    setTimeout(() => setCopiedPrBody(false), 2000);
-  };
 
   return (
     <div
@@ -226,21 +211,7 @@ ${manifest.endpoints.map((ep) => `- \`${ep.method} ${ep.path}\` ($${ep.price_usd
                 <Terminal size={16} color="var(--accent-purple)" />
                 <strong style={{ fontSize: '0.9rem' }}>Method 2: Command Line Workflow</strong>
               </div>
-              <button
-                className="btn btn-secondary"
-                onClick={handleCopyCli}
-                style={{ fontSize: '0.72rem', padding: '2px 8px' }}
-              >
-                {copiedCli ? (
-                  <>
-                    <Check size={12} color="var(--accent-emerald)" /> Copied
-                  </>
-                ) : (
-                  <>
-                    <Copy size={12} /> Copy CLI Script
-                  </>
-                )}
-              </button>
+              <ClipboardCopyButton text={cliCommands} label="Copy CLI Script" style={{ fontSize: '0.72rem', padding: '2px 8px' }} />
             </div>
             <pre
               className="code-block"
@@ -269,21 +240,7 @@ ${manifest.endpoints.map((ep) => `- \`${ep.method} ${ep.path}\` ($${ep.price_usd
                 <FileText size={16} color="var(--accent-cyan)" />
                 <strong style={{ fontSize: '0.9rem' }}>Pull Request Description Template</strong>
               </div>
-              <button
-                className="btn btn-secondary"
-                onClick={handleCopyPrBody}
-                style={{ fontSize: '0.72rem', padding: '2px 8px' }}
-              >
-                {copiedPrBody ? (
-                  <>
-                    <Check size={12} color="var(--accent-emerald)" /> Copied
-                  </>
-                ) : (
-                  <>
-                    <Copy size={12} /> Copy PR Body
-                  </>
-                )}
-              </button>
+              <ClipboardCopyButton text={prBody} label="Copy PR Body" style={{ fontSize: '0.72rem', padding: '2px 8px' }} />
             </div>
             <pre
               className="code-block"
