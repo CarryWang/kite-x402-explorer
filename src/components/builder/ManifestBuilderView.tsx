@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { ClipboardCopyButton } from './ClipboardCopyButton.js';
 import type {
   ServiceManifest,
   ServiceCategory,
@@ -12,8 +13,6 @@ import { PRSubmissionModal } from './PRSubmissionModal.js';
 import {
   FileCode,
   Download,
-  Copy,
-  Check,
   Plus,
   Trash2,
   Sparkles,
@@ -160,7 +159,6 @@ export const ManifestBuilderView: React.FC<ManifestBuilderViewProps> = ({
   onAddToDirectory,
 }) => {
   const [formData, setFormData] = useState<ServiceManifest>(TEMPLATES.ai.data);
-  const [copiedYaml, setCopiedYaml] = useState(false);
   const [isPrModalOpen, setIsPrModalOpen] = useState(false);
 
   // Convert current form data to YAML
@@ -181,12 +179,6 @@ export const ManifestBuilderView: React.FC<ManifestBuilderViewProps> = ({
     if (TEMPLATES[key]) {
       setFormData(JSON.parse(JSON.stringify(TEMPLATES[key].data)));
     }
-  };
-
-  const handleCopyYaml = async () => {
-    await navigator.clipboard.writeText(yamlContent);
-    setCopiedYaml(true);
-    setTimeout(() => setCopiedYaml(false), 2000);
   };
 
   const handleDownloadYaml = () => {
@@ -770,21 +762,7 @@ export const ManifestBuilderView: React.FC<ManifestBuilderViewProps> = ({
               </div>
 
               <div style={{ display: 'flex', gap: '0.4rem' }}>
-                <button
-                  className="btn btn-secondary"
-                  onClick={handleCopyYaml}
-                  style={{ fontSize: '0.72rem', padding: '3px 8px' }}
-                >
-                  {copiedYaml ? (
-                    <>
-                      <Check size={12} color="var(--accent-emerald)" /> Copied
-                    </>
-                  ) : (
-                    <>
-                      <Copy size={12} /> Copy
-                    </>
-                  )}
-                </button>
+                <ClipboardCopyButton text={yamlContent} label="Copy" style={{ fontSize: '0.72rem', padding: '3px 8px' }} />
                 <button
                   className="btn btn-secondary"
                   onClick={handleDownloadYaml}
