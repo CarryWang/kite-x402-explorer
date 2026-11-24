@@ -12,9 +12,8 @@ interface SnippetContext {
 /** Values shared by every generated client snippet for one service endpoint. */
 export function snippetContext(service: ServiceManifest, endpoint: ServiceEndpoint): SnippetContext {
   const fullUrl = `${service.base_url || 'https://your-host'}${endpoint.path}`;
-  const queryParams = endpoint.example_request?.query
-    ? '?' + new URLSearchParams(endpoint.example_request.query).toString()
-    : '';
+  const query = new URLSearchParams(endpoint.example_request?.query).toString();
+  const queryParams = query ? '?' + query : '';
   const isTestnet = service.network === 'eip155:2368';
   return {
     fullUrl,

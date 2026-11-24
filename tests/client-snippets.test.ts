@@ -143,3 +143,17 @@ test('no bundled sample service produces a snippet that uses pay_to as the verif
     }
   }
 });
+
+test('client snippets omit the query delimiter for an empty map', () => {
+  const ep = endpoint({ example_request: { query: {} } });
+  for (const build of Object.values(builders)) {
+    assert.match(build(service(), ep), /demo\.sandbox\.gokite\.ai\/v1\/demo"/);
+  }
+});
+
+test('snippet context keeps blank and reserved-character query values', () => {
+  const { queryParams } = snippetContext(service(), endpoint({
+    example_request: { query: { blank: '', search: 'a+b & 中文' } },
+  }));
+  assert.equal(queryParams, '?blank=&search=a%2Bb+%26+%E4%B8%AD%E6%96%87');
+});

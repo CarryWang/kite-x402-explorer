@@ -6,9 +6,8 @@ function quoteShellArgument(value: string): string {
 
 /** Generate literal arguments for Bash and other POSIX-compatible shells. */
 export function generateCurlSnippet(service: ServiceManifest, endpoint: ServiceEndpoint): string {
-  const query = endpoint.example_request?.query;
-  const url = `${service.base_url || 'https://your-host'}${endpoint.path}` +
-    (query ? '?' + new URLSearchParams(query).toString() : '');
+  const query = new URLSearchParams(endpoint.example_request?.query).toString();
+  const url = `${service.base_url || 'https://your-host'}${endpoint.path}` + (query ? '?' + query : '');
   const body = endpoint.method !== 'GET' && endpoint.example_request?.body !== undefined
     ? JSON.stringify(endpoint.example_request.body) : undefined;
   const bodyFlag = body !== undefined
