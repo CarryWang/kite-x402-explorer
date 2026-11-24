@@ -33,6 +33,7 @@ const shell = configuredShell || (process.platform === 'win32' ? undefined : '/b
 
 for (const fixture of [
   { name: 'plain GET', method: 'GET', path: '/v1/search' },
+  { name: 'empty query', method: 'GET', path: '/v1/search', query: {} },
   { name: 'query parameters', method: 'GET', path: '/v1/search', query: { q: "O'Reilly & Kite 中文" } },
   { name: 'JSON apostrophes', method: 'POST', path: '/v1/search', body: { name: "O'Reilly" } },
   { name: 'shell metacharacters', method: 'POST',
@@ -59,8 +60,8 @@ for (const fixture of [
     ], { encoding: 'utf8', timeout: 5000, env: { ...process.env, HOME: 'EXPANDED_HOME' } });
     assert.ifError(result.error);
     assert.equal(result.status, 0, result.stderr);
-    const url = service.base_url + fixture.path + ('query' in fixture
-      ? '?' + new URLSearchParams(fixture.query).toString() : '');
+    const url = service.base_url + fixture.path + (fixture.name === 'query parameters'
+      ? '?q=O%27Reilly+%26+Kite+%E4%B8%AD%E6%96%87' : '');
     const first = ['--globoff', '-i', '-X', fixture.method, url, '-H', 'Accept: application/json'];
     const second = [...first, '-H', 'PAYMENT-SIGNATURE: <base64-encoded-eip3009-authorization>'];
     if (fixture.method !== 'GET' && 'body' in fixture) {
