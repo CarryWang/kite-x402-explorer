@@ -4,6 +4,8 @@ import type { ServiceHealthStatus } from '../../types/health.js';
 import { X, Play, AlertTriangle, Activity, RefreshCw, CheckCircle2, ShieldCheck } from 'lucide-react';
 import { CodeSnippetGenerator } from '../common/CodeSnippetGenerator.js';
 import { StatusBadge } from '../common/StatusBadge.js';
+import { KITE_CHAINS } from '../../types/kite.js';
+import { usdToAtomicUnits } from '../../lib/price-units.js';
 
 interface ServiceDetailModalProps {
   service: ServiceManifest | null;
@@ -28,17 +30,11 @@ export const ServiceDetailModal: React.FC<ServiceDetailModalProps> = ({
   const currentEp = service.endpoints[selectedEndpointIndex] || service.endpoints[0];
   const isTestnet = service.network === 'eip155:2368';
 
-  // Convert USD price to integer token units
+  // Convert the USD price to the settlement token's integer units with exact string math,
+  // using the token decimals from the chain config (pieUSD 18, USDC.e 6).
   const calculateTokenUnits = (usdStr: string) => {
-    const usd = parseFloat(usdStr);
-    if (isNaN(usd)) return '0';
-    if (isTestnet) {
-      // 1 pieUSD = 10^18 units ($1). $0.001 = 10^15 units
-      return (BigInt(Math.round(usd * 1e6)) * BigInt(1e12)).toString();
-    } else {
-      // 1 USDC.e = 10^6 units ($1). $0.001 = 1000 units
-      return Math.round(usd * 1e6).toString();
-    }
+    const chain = KITE_CHAINS[service.network];
+    return (chain && usdToAtomicUnits(usdStr, chain.assetDecimals)) ?? 'unavailable';
   };
 
   const handleRecheck = async () => {
