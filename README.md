@@ -200,4 +200,9 @@ Apache-2.0
 
 ### Live probes and outbound relay
 
+Each browser page runs at most four health probe requests at once across batch
+and individual checks. The server runs up to four probes per process. A probe
+holds its slot until both upstream requests finish, and excess requests receive
+HTTP 503 with reason `probe_busy`.
+
 Health checks request the registered service `/healthz` and the facilitator `/supported`. Missing evidence, network errors and non-success responses do not fall back to simulated health. Demo settlement remains separate. The relay permits registered service origins and operator-configured `OUTBOUND_ALLOWED_ORIGINS` only (comma-separated HTTPS origins). It accepts GET, HEAD, and POST, limits JSON request bodies to 64 KiB, and forwards only Accept, JSON Content-Type, and a bounded PAYMENT-SIGNATURE header. DNS results must all be public and are pinned to the outbound socket. Redirects are refused. Each request has a three-second deadline covering DNS, headers and body, and a 1 MiB response cap. These probes verify advertised readiness, not a funded settlement.

@@ -56,6 +56,7 @@ export const App: React.FC = () => {
   // Health prober state
   const [healthMap, setHealthMap] = useState<Record<string, ServiceHealthStatus>>(getCachedHealthMap);
   const [isProbing, setIsProbing] = useState<boolean>(false);
+  const activeBatch = useRef<{services: ServiceManifest[]; controller: AbortController} | null>(null);
   const [autoRefreshInterval, setAutoRefreshInterval] = useState<HealthAutoRefreshInterval>(30);
 
   // Proof logs drawer state
@@ -104,14 +105,21 @@ export const App: React.FC = () => {
 
   // Run batch probe across all services
   const handleRunBatchProbe = useCallback(async () => {
+    if (activeBatch.current?.services === services) return;
+    activeBatch.current?.controller.abort();
+    const controller = new AbortController();
+    activeBatch.current = {services, controller};
     setIsProbing(true);
     try {
-      const results = await batchProbeServices(services);
-      setHealthMap(results);
+      const results = await batchProbeServices(services, controller.signal);
+      if (!controller.signal.aborted) setHealthMap(results);
     } catch (err) {
-      console.error('Batch probing error:', err);
+      if (!controller.signal.aborted) console.error('Batch probing error:', err);
     } finally {
-      setIsProbing(false);
+      if (activeBatch.current?.controller === controller) {
+        activeBatch.current = null;
+        setIsProbing(false);
+      }
     }
   }, [services]);
 
@@ -128,12 +136,18 @@ export const App: React.FC = () => {
     }
   }, []);
 
-  // Initial probe and real-time proof count subscription
   useEffect(() => {
-    handleRunBatchProbe();
-    const unsubscribeProofs = subscribeToProofs((updated) => setProofCount(updated.length));
-    return unsubscribeProofs;
+    void handleRunBatchProbe();
   }, [handleRunBatchProbe]);
+
+  useEffect(() => {
+    const unsubscribeProofs = subscribeToProofs((updated) => setProofCount(updated.length));
+    return () => {
+      unsubscribeProofs();
+      activeBatch.current?.controller.abort();
+      activeBatch.current = null;
+    };
+  }, []);
 
   // Auto-refresh interval effect
   useEffect(() => {

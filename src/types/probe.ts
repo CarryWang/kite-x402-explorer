@@ -14,7 +14,7 @@ export interface ObservedProbeResult {
 }
 
 const probeUnavailableReasons = [
-  'official_disabled', 'registry_unavailable', 'origin_not_approved', 'target_missing', 'upstream_error',
+  'official_disabled', 'registry_unavailable', 'origin_not_approved', 'target_missing', 'upstream_error', 'probe_busy',
 ] as const;
 
 export type ProbeUnavailableReason = typeof probeUnavailableReasons[number];

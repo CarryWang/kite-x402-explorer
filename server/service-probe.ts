@@ -6,6 +6,8 @@ import type { RegistrySnapshot } from './official-registry.js';
 import { requestPublic, validateTarget } from './outbound.js';
 
 const facilitatorEndpoint = FACILITATOR_URL + '/supported';
+const MAX_CONCURRENT_PROBES = 4;
+let activeProbes = 0;
 
 export async function probeRegisteredService(
   serviceName: string,
@@ -24,7 +26,9 @@ export async function probeRegisteredService(
   const official = config.registrySource === 'official';
   const allowedOrigins = official ? config.officialProbeAllowedOrigins : config.allowedOrigins;
   if (official && allowedOrigins.length === 0) return unavailable(503, 'official_disabled');
+  if (activeProbes >= MAX_CONCURRENT_PROBES) return unavailable(503, 'probe_busy');
 
+  activeProbes++;
   try {
     let services = INITIAL_SERVICES;
     if (official) {
@@ -47,10 +51,15 @@ export async function probeRegisteredService(
     }
 
     const options = {allowedOrigins, method:'GET'};
-    const [health, supported] = await Promise.all([
-      request(endpoint, options),
-      request(facilitatorEndpoint, options),
-    ]);
+    // Keep the slot until the sibling request finishes, even if one request fails early.
+    const [healthRequest, facilitatorRequest] = await Promise.allSettled(
+      [endpoint, facilitatorEndpoint].map(async url => request(url, options)),
+    );
+    if (healthRequest.status === 'rejected' || facilitatorRequest.status === 'rejected') {
+      return unavailable(502, 'upstream_error');
+    }
+    const health = healthRequest.value;
+    const supported = facilitatorRequest.value;
     const data = JSON.parse(health.body.toString());
     const capabilities = JSON.parse(supported.body.toString());
     const expectedAsset = KITE_CHAINS[service.network].assetAddress;
@@ -71,5 +80,7 @@ export async function probeRegisteredService(
     };
   } catch {
     return unavailable(502, 'upstream_error');
+  } finally {
+    activeProbes--;
   }
 }

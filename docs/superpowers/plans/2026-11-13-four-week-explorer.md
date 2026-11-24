@@ -73,6 +73,7 @@ For behavior changes, write a failing regression test, run it, implement the sco
 | 9 | `test: cover registry refresh and recovery` | 270/270 passed | passed | Tests expiry, the stale snapshot during backoff, recovery to a newer commit, and recovery from a cold start with a pinned commit. |
 | 10 | `feat: display registry provenance` | 294/294 passed | passed | The directory details show the full source commit, last successful fetch, refresh errors, and errors for excluded manifests. A failed refresh preserves the previous snapshot's provenance. |
 | 11 | `feat: allow approved official service probes` | 298/298 passed. Demo and official fixture smoke checks passed. | passed | Official probes check the current registry snapshot and a dedicated HTTPS origin allowlist for both service and facilitator. Probe requests use only the fixed GET endpoints. |
+| 12 | `fix: bound concurrent health probes` | 301/301 passed. Production smoke and probe saturation checks passed. | passed | Limits browser requests to four per page and server probes to four per process. Cancels superseded batches and verifies that upstream failures release slots only after both requests settle. |
 
 Append one row before each later day's single commit.
 

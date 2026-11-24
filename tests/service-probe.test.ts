@@ -87,3 +87,32 @@ test('official probes reject unknown or stale services and incomplete approvals 
     assert.equal(requests, 0);
   }
 });
+
+test('server probe slots stay occupied until both upstream requests settle', async () => {
+  const config = parseServerConfig({REGISTRY_SOURCE:'official', OFFICIAL_PROBE_ALLOWED_ORIGINS:approvedOrigins});
+  let release = () => {};
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  let failHealth = true;
+  let requests = 0;
+  const probe = () => probeRegisteredService(service.name, config, async () => snapshot(), async url => {
+    requests++;
+    if (url === serviceOrigin + '/healthz' && failHealth) throw new Error('Health request failed');
+    await gate;
+    return {status:200, headers:{}, body:Buffer.from('{}')};
+  });
+  const pending = Array.from({length:4}, probe);
+  try {
+    await new Promise<void>(resolve => setImmediate(resolve));
+    const overflow = await probe();
+    assert.equal(overflow.status, 503);
+    assert.ok(isProbeResult(overflow.result) && overflow.result.kind === 'unavailable');
+    assert.equal(overflow.result.reason, 'probe_busy');
+    assert.equal(requests, 8);
+  } finally {
+    release();
+    await Promise.all(pending);
+  }
+  failHealth = false;
+  assert.equal((await probe()).status, 200);
+  assert.equal(requests, 10);
+});
