@@ -18,6 +18,10 @@ interface PlaygroundViewProps {
   onOpenProofLogs?: () => void;
 }
 
+function endpointKey(endpoint: ServiceEndpoint): string {
+  return endpoint.method + ' ' + endpoint.path;
+}
+
 export const PlaygroundView: React.FC<PlaygroundViewProps> = ({
   services,
   selectedService: initialService,
@@ -69,7 +73,7 @@ export const PlaygroundView: React.FC<PlaygroundViewProps> = ({
   };
 
   const handleEndpointChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const found = currentService.endpoints.find((ep) => ep.path === e.target.value);
+    const found = currentService.endpoints.find((ep) => endpointKey(ep) === e.target.value);
     if (found) {
       setCurrentEndpoint(found);
       resetPlayground();
@@ -492,7 +496,7 @@ export const PlaygroundView: React.FC<PlaygroundViewProps> = ({
             SELECT ENDPOINT
           </label>
           <select
-            value={currentEndpoint.path}
+            value={endpointKey(currentEndpoint)}
             onChange={handleEndpointChange}
             style={{
               width: '100%',
@@ -505,7 +509,7 @@ export const PlaygroundView: React.FC<PlaygroundViewProps> = ({
             }}
           >
             {currentService.endpoints.map((ep) => (
-              <option key={ep.path} value={ep.path}>
+              <option key={endpointKey(ep)} value={endpointKey(ep)}>
                 {ep.method} {ep.path} (${ep.price_usd})
               </option>
             ))}
