@@ -94,12 +94,14 @@ export function auditX402ChallengeTarget(
 
   // 3. Asset contract check against known Kite chain configs
   const kiteConfig = KITE_CHAINS[accept.network];
-  if (kiteConfig && accept.asset) {
-    if (accept.asset.toLowerCase() !== kiteConfig.assetAddress.toLowerCase()) {
+  // 已知 Kite 网络缺少 asset 也必须拒绝，不能跳过官方代币合约校验。
+  const asset = accept.asset;
+  if (kiteConfig) {
+    if (typeof asset !== 'string' || asset.toLowerCase() !== kiteConfig.assetAddress.toLowerCase()) {
       violations.push({
         code: 'INVALID_ASSET_CONTRACT',
         severity: 'HIGH',
-        message: `Asset token contract mismatch. Expected official ${kiteConfig.assetSymbol} (${kiteConfig.assetAddress}), got: ${accept.asset}`,
+        message: `Asset token contract mismatch. Expected official ${kiteConfig.assetSymbol} (${kiteConfig.assetAddress}), got: ${typeof asset === 'string' ? asset : 'missing or invalid asset'}`,
       });
       riskScore += 40;
     }
