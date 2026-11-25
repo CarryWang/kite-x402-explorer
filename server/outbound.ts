@@ -45,11 +45,13 @@ export interface OutboundOptions {
 export async function requestPublic(raw: string, options: OutboundOptions): Promise<OutboundResponse> {
   const method = options.method ?? 'GET';
   if (!permittedMethods.has(method)) throw new Error('Outbound method is not permitted');
-  if (options.body !== undefined && method !== 'POST') throw new Error('Outbound body requires POST');
-  if (Buffer.byteLength(options.body ?? '', 'utf8') > MAX_REQUEST_BODY_BYTES) {
+  // DNS 是异步边界；发送时只能使用已验证的正文与请求头快照。
+  const body = options.body;
+  if (body !== undefined && method !== 'POST') throw new Error('Outbound body requires POST');
+  if (Buffer.byteLength(body ?? '', 'utf8') > MAX_REQUEST_BODY_BYTES) {
     throw new Error('Outbound request body too large');
   }
-  const headers = options.headers ?? {Accept: 'application/json'};
+  const headers = {...(options.headers ?? {Accept: 'application/json'})};
   const seenHeaders = new Set<string>();
   for (const [name, value] of Object.entries(headers)) {
     const key = name.toLowerCase();
@@ -114,7 +116,7 @@ export async function requestPublic(raw: string, options: OutboundOptions): Prom
         });
       });
       request.on('error', fail);
-      if (options.body) request.write(options.body);
+      if (body) request.write(body);
       request.end();
     }).catch(fail);
   });
