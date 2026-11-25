@@ -75,43 +75,48 @@ export interface BuildEIP3009Params {
 export async function createSignedEIP3009Payload(
   params: BuildEIP3009Params
 ): Promise<{ payload: PaymentSignatureHeaderPayload; base64Header: string }> {
-  if (!Object.prototype.hasOwnProperty.call(KITE_CHAINS, params.network)
-    || KITE_CHAINS[params.network].network !== params.network) {
-    throw new Error('Unsupported payment network: ' + params.network);
+  // 签名等待期间调用方可能复用参数；校验、签名输入和返回头须绑定同一组值。
+  const {
+    fromAddress, payToAddress, amountUnits, network, assetAddress,
+    tokenName, tokenVersion, signTypedDataFn,
+  } = params;
+  if (!Object.prototype.hasOwnProperty.call(KITE_CHAINS, network)
+    || KITE_CHAINS[network].network !== network) {
+    throw new Error('Unsupported payment network: ' + network);
   }
-  const kiteConfig = KITE_CHAINS[params.network];
-  if (![params.fromAddress, params.payToAddress, params.assetAddress].every((value) => isAddress(value, { strict: false }))) {
+  const kiteConfig = KITE_CHAINS[network];
+  if (![fromAddress, payToAddress, assetAddress].every((value) => isAddress(value, { strict: false }))) {
     throw new Error('Payment addresses must be 20-byte EVM addresses');
   }
-  if (!/^[1-9][0-9]*$/.test(params.amountUnits) || BigInt(params.amountUnits) >= 2n ** 256n) {
+  if (!/^[1-9][0-9]*$/.test(amountUnits) || BigInt(amountUnits) >= 2n ** 256n) {
     throw new Error('Payment amount must be a positive uint256 integer');
   }
   const chainId = kiteConfig.chainId;
-  const domainName = params.tokenName || kiteConfig.eip712Domain.name;
-  const domainVersion = params.tokenVersion || kiteConfig.eip712Domain.version;
+  const domainName = tokenName || kiteConfig.eip712Domain.name;
+  const domainVersion = tokenVersion || kiteConfig.eip712Domain.version;
 
   const nonce = generateRandomNonce();
   const validAfter = 0n;
   const validBefore = BigInt(Math.floor(Date.now() / 1000) + 3600); // 1 hour TTL
-  const value = BigInt(params.amountUnits);
+  const value = BigInt(amountUnits);
 
   const domain = {
     name: domainName,
     version: domainVersion,
     chainId,
-    verifyingContract: params.assetAddress,
+    verifyingContract: assetAddress,
   };
 
   const message = {
-    from: params.fromAddress,
-    to: params.payToAddress,
+    from: fromAddress,
+    to: payToAddress,
     value,
     validAfter,
     validBefore,
     nonce,
   };
 
-  const rawSig = await params.signTypedDataFn({
+  const rawSig = await signTypedDataFn.call(params, {
     domain,
     types: EIP3009_TYPES,
     primaryType: 'TransferWithAuthorization',
@@ -123,11 +128,11 @@ export async function createSignedEIP3009Payload(
   const payload: PaymentSignatureHeaderPayload = {
     x402Version: 2,
     scheme: 'exact',
-    network: params.network,
+    network: network,
     authorization: {
-      from: params.fromAddress,
-      to: params.payToAddress,
-      value: params.amountUnits,
+      from: fromAddress,
+      to: payToAddress,
+      value: amountUnits,
       validAfter: Number(validAfter),
       validBefore: Number(validBefore),
       nonce,
