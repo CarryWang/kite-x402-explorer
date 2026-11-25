@@ -1,12 +1,23 @@
 import type { X402ChallengePayload } from '../types/x402.js';
 
 /**
+ * Decodes base64 into UTF-8 text. atob() alone returns one character per
+ * byte, which garbles any non-ASCII text, so the bytes go through TextDecoder.
+ * Invalid UTF-8 throws instead of being replaced silently.
+ */
+function base64ToUtf8(value: string): string {
+  const binary = atob(value.trim());
+  const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+  return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+}
+
+/**
  * Decodes a base64 encoded PAYMENT-REQUIRED header string into a structured object.
+ * x402 SDKs encode the UTF-8 bytes of the JSON, so descriptions may contain any language.
  */
 export function decodePaymentRequiredHeader(headerVal: string): X402ChallengePayload | null {
   try {
-    const rawStr = typeof atob !== 'undefined' ? atob(headerVal) : Buffer.from(headerVal, 'base64').toString('utf-8');
-    return JSON.parse(rawStr) as X402ChallengePayload;
+    return JSON.parse(base64ToUtf8(headerVal)) as X402ChallengePayload;
   } catch (err) {
     console.error('Failed to decode PAYMENT-REQUIRED header:', err);
     return null;
