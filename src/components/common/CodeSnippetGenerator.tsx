@@ -3,6 +3,7 @@ import type { ServiceManifest, ServiceEndpoint } from '../../types/service.js';
 import { generateCurlSnippet } from '../../lib/curl-snippet.js';
 import { Copy, Check, Terminal, FileCode, Bot } from 'lucide-react';
 import { buildTsSnippet, buildPythonSnippet, buildGoSnippet, buildRustSnippet } from '../../lib/client-snippets.js';
+import { buildAgentToolSnippet } from '../../lib/agent-tool-snippet.js';
 
 interface CodeSnippetGeneratorProps {
   service: ServiceManifest;
@@ -24,9 +25,7 @@ export const CodeSnippetGenerator: React.FC<CodeSnippetGeneratorProps> = ({
     return () => clearTimeout(timeout);
   }, [copyResult]);
 
-  const fullUrl = `${service.base_url || 'https://your-host'}${endpoint.path}`;
   const isTestnet = service.network === 'eip155:2368';
-  const tokenSymbol = isTestnet ? 'pieUSD' : 'USDC.e';
   const chainId = isTestnet ? 2368 : 2366;
 
   const handleCopy = async (text: string) => {
@@ -56,21 +55,7 @@ export const CodeSnippetGenerator: React.FC<CodeSnippetGeneratorProps> = ({
   };
 
   const getAgentToolCode = () => {
-    return `// LangChain / OpenAI Agent Tool definition for Kite x402 API
-export const kite${service.name.replace(/[^a-zA-Z0-9]/g, '')}Tool = {
-  name: "${service.name.replace(/-/g, '_')}",
-  description: ${JSON.stringify(`${service.description} Listed price: $${endpoint.price_usd} (${tokenSymbol}).`)},
-  parameters: {
-    type: "object",
-    properties: {
-      ${endpoint.example_request?.query ? Object.keys(endpoint.example_request.query).map(k => `[${JSON.stringify(k)}]: { type: "string" }`).join(',\n      ') : 'query: { type: "string" }'}
-    }
-  },
-  execute: async (args: Record<string, string>) => {
-    // Passes through autonomous agent wallet with x402 auto-payment
-    return await callKiteServiceWithAutoPayment(${JSON.stringify(fullUrl)}, args);
-  }
-};`;
+    return buildAgentToolSnippet(service, endpoint);
   };
 
   const getSwarmOrchestratorCode = () => {
