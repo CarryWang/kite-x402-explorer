@@ -74,6 +74,7 @@ For behavior changes, write a failing regression test, run it, implement the sco
 | 10 | `feat: display registry provenance` | 294/294 passed | passed | The directory details show the full source commit, last successful fetch, refresh errors, and errors for excluded manifests. A failed refresh preserves the previous snapshot's provenance. |
 | 11 | `feat: allow approved official service probes` | 298/298 passed. Demo and official fixture smoke checks passed. | passed | Official probes check the current registry snapshot and a dedicated HTTPS origin allowlist for both service and facilitator. Probe requests use only the fixed GET endpoints. |
 | 12 | `fix: bound concurrent health probes` | 301/301 passed. Production smoke and probe saturation checks passed. | passed | Limits browser requests to four per page and server probes to four per process. Cancels superseded batches and verifies that upstream failures release slots only after both requests settle. |
+| 14 | `test: verify directory and probe integration` | 303/303 passed. Demo production smoke passed. | passed | Covers official snapshot recovery, mismatched probe evidence during refresh, and cache protection when switching from demo to official. The integration tests stub upstream responses. |
 
 Append one row before each later day's single commit.
 
