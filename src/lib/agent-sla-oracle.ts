@@ -79,7 +79,8 @@ export class AgentSLAOracle {
    */
   public recordHeartbeat(ping: AgentHeartbeat): void {
     const list = this.heartbeats.get(ping.serviceId) || [];
-    list.push(ping);
+    // 保留观测时的记录，调用方复用对象不能改写历史 SLA 计算依据。
+    list.push({ ...ping });
     // Keep last 1000 pings for rolling window analysis
     if (list.length > 1000) {
       list.shift();
@@ -176,7 +177,7 @@ export class AgentSLAOracle {
     };
 
     this.penalties.push(penalty);
-    return penalty;
+    return { ...penalty };
   }
 
   /**
@@ -198,7 +199,7 @@ export class AgentSLAOracle {
       isRedeemed: false,
     };
     this.refundVouchers.set(voucher.voucherId, voucher);
-    return voucher;
+    return { ...voucher };
   }
 
   /**
@@ -213,11 +214,12 @@ export class AgentSLAOracle {
   }
 
   public getPenalties(): SLAViolationPenalty[] {
-    return [...this.penalties];
+    return this.penalties.map((penalty) => ({ ...penalty }));
   }
 
   public getVouchersForCaller(caller: string): SLARefundVoucher[] {
-    return Array.from(this.refundVouchers.values()).filter((v) => v.recipientCaller === caller);
+    // 查询返回独立快照，外部不能重置内部的已兑换状态。
+    return Array.from(this.refundVouchers.values()).filter((v) => v.recipientCaller === caller).map((v) => ({ ...v }));
   }
 }
 
