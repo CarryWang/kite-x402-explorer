@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import type { ServiceManifest, ServiceCategory, ServiceStatus } from '../../types/service.js';
 import type { ServiceHealthStatus, HealthAutoRefreshInterval, HealthStatusType } from '../../types/health.js';
 import { ServiceCard } from './ServiceCard.js';
+import { queryDirectory, type DirectorySort } from '../../lib/directory-query.js';
 import { Search, Sparkles, ArrowUpDown, X, Layers, Activity, RefreshCw } from 'lucide-react';
 
 interface DirectoryViewProps {
@@ -26,7 +27,7 @@ const CATEGORIES: { id: ServiceCategory | 'all'; label: string }[] = [
   { id: 'web', label: 'Web Services' },
 ];
 
-type SortOption = 'price-asc' | 'price-desc' | 'endpoints' | 'latency-asc' | 'name';
+type SortOption = DirectorySort;
 
 export const DirectoryView: React.FC<DirectoryViewProps> = ({
   services,
@@ -76,63 +77,18 @@ export const DirectoryView: React.FC<DirectoryViewProps> = ({
     };
   }, [services, healthMap]);
 
-  const filteredServices = useMemo(() => {
-    return services
-      .filter((srv) => {
-        // Network filter
-        if (selectedNetwork === 'testnet' && srv.network !== 'eip155:2368') return false;
-        if (selectedNetwork === 'mainnet' && srv.network !== 'eip155:2366') return false;
-
-        // Status filter
-        if (selectedStatus !== 'all' && srv.status !== selectedStatus) return false;
-
-        // Category filter
-        if (selectedCategory !== 'all' && !srv.categories.includes(selectedCategory)) return false;
-
-        // Health filter
-        if (selectedHealth !== 'all') {
-          const h = healthMap[srv.name];
-          if (!h && selectedHealth !== 'unprobed') return false;
-          if (h && h.status !== selectedHealth) return false;
-        }
-
-        // Search query
-        if (searchQuery.trim()) {
-          const q = searchQuery.toLowerCase();
-          const matchesName =
-            srv.name.toLowerCase().includes(q) || srv.display_name.toLowerCase().includes(q);
-          const matchesDesc = srv.description.toLowerCase().includes(q);
-          const matchesTags = srv.tags?.some((t) => t.toLowerCase().includes(q)) ?? false;
-          return matchesName || matchesDesc || matchesTags;
-        }
-
-        return true;
-      })
-      .sort((a, b) => {
-        const getMinPrice = (srv: ServiceManifest) =>
-          srv.endpoints.reduce((min, ep) => Math.min(min, parseFloat(ep.price_usd)), Infinity);
-
-        if (sortBy === 'price-asc') return getMinPrice(a) - getMinPrice(b);
-        if (sortBy === 'price-desc') return getMinPrice(b) - getMinPrice(a);
-        if (sortBy === 'endpoints') return b.endpoints.length - a.endpoints.length;
-        if (sortBy === 'latency-asc') {
-          const latA = healthMap[a.name]?.latencyMs ?? 9999;
-          const latB = healthMap[b.name]?.latencyMs ?? 9999;
-          return latA - latB;
-        }
-        if (sortBy === 'name') return a.display_name.localeCompare(b.display_name);
-        return 0;
-      });
-  }, [
-    services,
-    selectedNetwork,
-    selectedStatus,
-    selectedCategory,
-    selectedHealth,
-    searchQuery,
-    sortBy,
-    healthMap,
-  ]);
+  const filteredServices = useMemo(
+    () =>
+      queryDirectory(services, healthMap, {
+        network: selectedNetwork,
+        status: selectedStatus,
+        category: selectedCategory,
+        health: selectedHealth,
+        search: searchQuery,
+        sortBy,
+      }),
+    [services, selectedNetwork, selectedStatus, selectedCategory, selectedHealth, searchQuery, sortBy, healthMap],
+  );
 
   const hasActiveFilters =
     selectedCategory !== 'all' ||
