@@ -123,7 +123,8 @@ export function subscribeToProofs(listener: ProofUpdateListener): () => void {
 function notifyListeners(proofs: PaymentProofRecord[]): void {
   listeners.forEach((fn) => {
     try {
-      fn(proofs);
+      // 每个订阅者独立持有 JSON 快照，避免组件修改传播为其他组件的支付证据。
+      fn(JSON.parse(JSON.stringify(proofs)) as PaymentProofRecord[]);
     } catch (e) {
       console.error('Error notifying proof listener', e);
     }
