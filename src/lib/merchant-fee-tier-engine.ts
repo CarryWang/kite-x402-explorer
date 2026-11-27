@@ -35,7 +35,8 @@ export class MerchantFeeTierEngine {
   private tiers: FeeTier[];
 
   constructor(customTiers?: FeeTier[]) {
-    this.tiers = [...(customTiers || DEFAULT_FEE_TIERS)].sort((a, b) => a.minVolumeUsd - b.minVolumeUsd);
+    // 安装和校验私有费率快照，调用方后续修改对象不能改变生效策略。
+    this.tiers = (customTiers || DEFAULT_FEE_TIERS).map((tier) => ({ ...tier })).sort((a, b) => a.minVolumeUsd - b.minVolumeUsd);
     if (this.tiers.length === 0 || this.tiers[0].minVolumeUsd !== 0 || this.tiers.some((tier) =>
       !Number.isFinite(tier.minVolumeUsd) || tier.minVolumeUsd < 0 ||
       !Number.isFinite(tier.baseFeeBps) || tier.baseFeeBps < 0 ||
@@ -55,13 +56,13 @@ export class MerchantFeeTierEngine {
         break;
       }
     }
-    return currentTier;
+    return { ...currentTier };
   }
 
   public getNextTier(volumeUsd: number): FeeTier | null {
     for (const tier of this.tiers) {
       if (tier.minVolumeUsd > volumeUsd) {
-        return tier;
+        return { ...tier };
       }
     }
     return null;
