@@ -127,7 +127,7 @@ export class AgentSubscriptionManager {
       return { allowed: false, remainingCalls: 0, reason: `Subscription is ${sub.status}` };
     }
 
-    if (now > sub.currentPeriodEnd) {
+    if (now >= sub.currentPeriodEnd) {
       sub.status = 'EXPIRED';
       return { allowed: false, remainingCalls: 0, reason: 'Subscription period expired; renewal required' };
     }
@@ -163,6 +163,8 @@ export class AgentSubscriptionManager {
     });
     const periodBase = Math.max(now, sub.currentPeriodEnd);
 
+    // 续费已经按当前套餐价格验证，订阅快照也须记录这次实际采用的价格。
+    sub.priceAtomic = plan.priceAtomic;
     sub.status = 'ACTIVE';
     sub.currentPeriodStart = periodBase;
     sub.currentPeriodEnd = periodBase + plan.intervalMs;
