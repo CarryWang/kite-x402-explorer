@@ -388,23 +388,25 @@ export function verifyReceiptInclusionProof(
   proof: ReceiptInclusionProof,
   expectedRoot: `0x${string}`
 ): boolean {
-  if (!/^0x[0-9a-f]{64}$/i.test(expectedRoot) || proof.merkleRoot.toLowerCase() !== expectedRoot.toLowerCase()) {
-    return false;
-  }
   try {
+    // 导入的数据不受静态类型约束；整个验证边界统一拒绝畸形数据，不能向调用方抛异常。
+    const isHash = (value: unknown): value is `0x${string}` => typeof value === 'string' && /^0x[0-9a-f]{64}$/i.test(value);
+    if (!proof || typeof proof !== 'object' || !isHash(expectedRoot) || !isHash(proof.merkleRoot) ||
+      !isHash(proof.receiptHash) || proof.merkleRoot.toLowerCase() !== expectedRoot.toLowerCase() ||
+      !Array.isArray(proof.auditPath) || !proof.auditPath.every(isHash)) {
+      return false;
+    }
     if (proof.receipt.receiptId !== proof.receiptId || hashReceipt(proof.receipt).toLowerCase() !== proof.receiptHash.toLowerCase()) {
       return false;
     }
+    let current = proof.receiptHash;
+    for (const sibling of proof.auditPath) {
+      current = combineMerklePair(current, sibling);
+    }
+    return current.toLowerCase() === expectedRoot.toLowerCase();
   } catch {
     return false;
   }
-  let current = proof.receiptHash;
-
-  for (const sibling of proof.auditPath) {
-    current = combineMerklePair(current, sibling);
-  }
-
-  return current.toLowerCase() === expectedRoot.toLowerCase();
 }
 
 /**
