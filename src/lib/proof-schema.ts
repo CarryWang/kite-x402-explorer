@@ -45,6 +45,14 @@ export function proofRecordErrors(value: unknown): string[] {
       (auth.to as string).toLowerCase() !== (record.payToAddress as string).toLowerCase() ||
       BigInt(auth.value as string) !== BigInt(record.amountRaw as string)))
       errors.push('EIP-3009 authorization does not match payment fields');
+    if (auth && typeof auth === 'object') {
+      // 仅检查 ABI 字段形状；可选元数据通过校验不代表签名或链上结算已验证。
+      if (auth.v !== undefined && (!Number.isInteger(auth.v) || (auth.v as number) < 0 || (auth.v as number) > 255))
+        errors.push('Invalid EIP-3009 v: expected uint8');
+      for (const field of ['r', 's'])
+        if (auth[field] !== undefined && (typeof auth[field] !== 'string' || !hash.test(auth[field] as string)))
+          errors.push(`Invalid EIP-3009 ${field}: expected bytes32`);
+    }
   }
   return errors;
 }
