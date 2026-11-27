@@ -66,6 +66,10 @@ export class AgentInvoiceGenerator {
     const now = Date.now();
     const ttlMs = (params.ttlSeconds ?? 3600) * 1000;
     const expiresAt = now + ttlMs;
+    // 保留有限的历史 TTL 用于已过期记录，但拒绝永不过期的 NaN/Infinity 和失真时间戳。
+    if (!Number.isFinite(ttlMs) || !Number.isSafeInteger(expiresAt)) {
+      throw new Error('Invalid invoice lifetime');
+    }
 
     let subtotalAtomic = 0n;
     const lineItems: InvoiceLineItem[] = params.items.map((item) => {
@@ -132,7 +136,7 @@ export class AgentInvoiceGenerator {
       throw new Error(`Cannot settle an invoice with status ${invoice.status}`);
     }
 
-    if (Date.now() > invoice.expiresAt) {
+    if (Date.now() >= invoice.expiresAt) {
       invoice.status = 'EXPIRED';
       throw new Error(`Invoice ${invoiceId} has expired`);
     }
@@ -159,7 +163,7 @@ export class AgentInvoiceGenerator {
    */
   public getInvoice(invoiceId: string): MicroInvoice | undefined {
     const invoice = this.invoices.get(invoiceId);
-    if (invoice && invoice.status === 'ISSUED' && Date.now() > invoice.expiresAt) {
+    if (invoice && invoice.status === 'ISSUED' && Date.now() >= invoice.expiresAt) {
       invoice.status = 'EXPIRED';
     }
     return invoice && this.copyInvoice(invoice);
@@ -170,9 +174,14 @@ export class AgentInvoiceGenerator {
    */
   public listByAgent(agentAddress: string): MicroInvoice[] {
     const addr = agentAddress.toLowerCase();
+    const now = Date.now();
     return Array.from(this.invoices.values()).filter(
       (inv) => inv.issuerAgent === addr || inv.payerAgent === addr
-    ).map((inv) => this.copyInvoice(inv));
+    ).map((inv) => {
+      // 列表和单条查询采用相同的到期边界，避免继续展示为可结算的 ISSUED。
+      if (inv.status === 'ISSUED' && now >= inv.expiresAt) inv.status = 'EXPIRED';
+      return this.copyInvoice(inv);
+    });
   }
 
   private copyInvoice(invoice: MicroInvoice): MicroInvoice {
