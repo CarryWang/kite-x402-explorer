@@ -79,12 +79,16 @@ export function calculateInsurancePremium(params: {
     throw new Error('Insured amount must be positive');
   }
 
-  const score = Math.max(0, Math.min(1000, params.providerReputationScore ?? 500));
+  const suppliedScore = params.providerReputationScore ?? 500;
+  if (!Number.isFinite(suppliedScore) || !Number.isInteger(suppliedScore)) {
+    throw new Error('Reputation score must be a finite integer');
+  }
+  const score = Math.max(0, Math.min(1000, suppliedScore));
   // High reputation discount: up to 50% discount; low reputation surcharge: up to 100% surcharge
   const multiplierBps = 10_000 + (500 - score) * 10;
-  const effectiveBps = (BASE_PREMIUM_BPS * multiplierBps) / 10_000;
-
-  return (params.insuredAmountWei * BigInt(effectiveBps)) / BigInt(BPS_DENOMINATOR);
+  // 保留有理数费率到最后一次整数除法，避免合法信誉分产生 199.8 bps 后 BigInt 抛异常。
+  return (params.insuredAmountWei * BigInt(BASE_PREMIUM_BPS) * BigInt(multiplierBps)) /
+    (10_000n * BigInt(BPS_DENOMINATOR));
 }
 
 /**
