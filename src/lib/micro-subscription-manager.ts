@@ -73,6 +73,13 @@ export interface SubscriptionSummary {
   isRenewalDue: boolean;
 }
 
+function assertSubscriptionPlan(subscription: SubscriptionRecord, plan: SubscriptionPlan): void {
+  // 所有计费/退款查询都绑定原套餐与提供方，不能用另一个套餐替换价格或额度。
+  if (subscription.planId !== plan.planId || subscription.provider.toLowerCase() !== plan.provider.toLowerCase()) {
+    throw new Error('Subscription plan mismatch');
+  }
+}
+
 /**
  * Validates standard 20-byte EVM address format.
  */
@@ -197,6 +204,7 @@ export function recordSubscriptionUsage(
   remainingSpendCapWei: bigint;
   rejectionReason?: string;
 } {
+  assertSubscriptionPlan(subscription, plan);
   const now = currentTimestamp ?? Date.now();
 
   if (subscription.status !== 'active') {
@@ -318,6 +326,7 @@ export function calculateProratedRefund(
   plan: SubscriptionPlan,
   currentTimestamp?: number
 ): bigint {
+  assertSubscriptionPlan(subscription, plan);
   if (plan.baseCostWei === 0n) return 0n;
 
   const now = currentTimestamp ?? Date.now();
@@ -342,6 +351,7 @@ export function getSubscriptionSummary(
   plan: SubscriptionPlan,
   currentTimestamp?: number
 ): SubscriptionSummary {
+  assertSubscriptionPlan(subscription, plan);
   const now = currentTimestamp ?? Date.now();
   const remainingSpendCapWei = plan.maxSpendCapWei > subscription.periodSpendWei
     ? plan.maxSpendCapWei - subscription.periodSpendWei
@@ -405,9 +415,7 @@ export function processSubscriptionRenewal(
   if (now < subscription.currentPeriodEnd) {
     throw new Error('Subscription renewal is not due');
   }
-  if (subscription.planId !== plan.planId || subscription.provider.toLowerCase() !== plan.provider.toLowerCase()) {
-    throw new Error('Subscription plan mismatch');
-  }
+  assertSubscriptionPlan(subscription, plan);
   if (options.paymentSuccess && !options.verifyPayment?.(subscription, subscription.periodSpendWei)) {
     throw new Error('Payment verification required before renewal');
   }
