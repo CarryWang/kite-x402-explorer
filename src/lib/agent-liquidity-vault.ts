@@ -161,7 +161,9 @@ export function drawLiquidityForPayment(
   }
 
   // Check required reserve floor
-  const requiredReserve = (pool.totalDepositedWei * BigInt(pool.reserveRatioBps)) / BigInt(BPS_DENOMINATOR);
+  // 最低储备须向上取整：11 个单位的 10% 至少保留 2，不能因原子单位舍入跌破下限。
+  const denominator = BigInt(BPS_DENOMINATOR);
+  const requiredReserve = (pool.totalDepositedWei * BigInt(pool.reserveRatioBps) + denominator - 1n) / denominator;
   const maxAvailableForDraw = pool.availableLiquidityWei > requiredReserve
     ? pool.availableLiquidityWei - requiredReserve
     : 0n;
