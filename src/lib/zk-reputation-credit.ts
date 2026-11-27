@@ -91,7 +91,13 @@ export function consumeCredit(
   profile: CreditLineProfile,
   invoiceAmountWei: bigint
 ): CreditLineProfile {
-  if (invoiceAmountWei <= 0n) return profile;
+  if (invoiceAmountWei < 0n) throw new Error('Credit amount must be non-negative');
+  if (invoiceAmountWei === 0n) return profile;
+  // 评估时有效的证明可能已过期；每次正额提款都须重新检查本地额度的有效状态。
+  if (!profile.isEligibleForPostSettlement) throw new Error('Credit profile is not eligible');
+  if (!Number.isSafeInteger(profile.expiresAtTimestamp) || Math.floor(Date.now() / 1000) > profile.expiresAtTimestamp) {
+    throw new Error('Credit profile has expired');
+  }
 
   if (invoiceAmountWei > profile.availableCreditWei) {
     throw new Error(
@@ -116,6 +122,8 @@ export function settleCreditDebt(
   profile: CreditLineProfile,
   settledAmountWei: bigint
 ): CreditLineProfile {
+  // 负数还款会反向增加债务；过期后的正额还款仍允许清偿原有余额。
+  if (settledAmountWei < 0n) throw new Error('Debt settlement amount must be non-negative');
   const actualSettled = settledAmountWei > profile.utilizedCreditWei ? profile.utilizedCreditWei : settledAmountWei;
   const newUtilized = profile.utilizedCreditWei - actualSettled;
   const newAvailable = profile.maxCreditLimitWei - newUtilized;
