@@ -189,18 +189,21 @@ export function evaluateConsensus(
   // Group commitments by resultHash
   const votes = new Map<`0x${string}`, AgentCommitment[]>();
   for (const c of proposal.commitments) {
-    const list = votes.get(c.resultHash) ?? [];
+    // 十六进制大小写不改变承诺字节，不能将同一结果拆成不同选票。
+    const hash = c.resultHash.toLowerCase() as `0x${string}`;
+    const list = votes.get(hash) ?? [];
     list.push(c);
-    votes.set(c.resultHash, list);
+    votes.set(hash, list);
   }
 
   // Find majority hash
   let winningHash: `0x${string}` | undefined;
   let winningList: AgentCommitment[] = [];
-  for (const [hash, list] of votes.entries()) {
+  for (const list of votes.values()) {
     if (list.length >= proposal.quorumThreshold) {
       if (list.length > winningList.length) {
-        winningHash = hash;
+        // 返回值保留首个获胜承诺的原编码，只将分组和比较按相同字节处理。
+        winningHash = list[0].resultHash;
         winningList = list;
       }
     }
@@ -211,7 +214,7 @@ export function evaluateConsensus(
   if (winningHash && winningList.length >= proposal.quorumThreshold) {
     const agreeingNodes = winningList.map((c) => c.agentAddress);
     const dissentingNodes = proposal.commitments
-      .filter((c) => c.resultHash !== winningHash)
+      .filter((c) => c.resultHash.toLowerCase() !== winningHash!.toLowerCase())
       .map((c) => c.agentAddress);
 
     // Compute total compute units among agreeing nodes for weighted distribution
