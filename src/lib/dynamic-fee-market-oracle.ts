@@ -117,6 +117,10 @@ export function computeQuoteDigest(
   return `0x${hash}` as `0x${string}`;
 }
 
+function isTimestamp(value: number): boolean {
+  return Number.isSafeInteger(value) && value >= 0;
+}
+
 export function createMarketOracle(
   customConfig?: Partial<MarketConfig>,
   signingSecret?: string
@@ -157,6 +161,7 @@ export function createMarketOracle(
     }
 
     const now = currentTimestamp ?? Math.floor(Date.now() / 1000);
+    if (!isTimestamp(now)) throw new Error('Invalid market registration timestamp');
     const state: ProviderMarketState = {
       providerAddress: normalized,
       currentBaseFeeUnits: baseFee,
@@ -187,6 +192,7 @@ export function createMarketOracle(
     }
 
     const now = currentTimestamp ?? Math.floor(Date.now() / 1000);
+    if (!isTimestamp(now)) throw new Error('Invalid market update timestamp');
     const rawRatio = activeRequests / state.capacityLimit;
     const utilizationRatio = Math.min(rawRatio, 2.0);
 
@@ -246,6 +252,8 @@ export function createMarketOracle(
 
     const now = currentTimestamp ?? Math.floor(Date.now() / 1000);
     const expiresAt = now + config.quoteTtlSeconds;
+    // 无效时钟及溢出的到期时间须在报价计数和状态发布之前拒绝。
+    if (!isTimestamp(now) || !isTimestamp(expiresAt)) throw new Error('Invalid quote timestamp or deadline');
 
     quoteCounter += 1;
     state.totalQuotesIssued += 1;
@@ -282,7 +290,10 @@ export function createMarketOracle(
   ): FeeQuoteVerificationResult {
     const now = currentTimestamp ?? Math.floor(Date.now() / 1000);
 
-    if (now > quote.expiresAtTimestamp) {
+    if (!isTimestamp(now) || !isTimestamp(quote.issuedAtTimestamp) || !isTimestamp(quote.expiresAtTimestamp)) {
+      return { valid: false, reason: 'INVALID_TIMESTAMP' };
+    }
+    if (now >= quote.expiresAtTimestamp) {
       return { valid: false, reason: 'EXPIRED' };
     }
 
