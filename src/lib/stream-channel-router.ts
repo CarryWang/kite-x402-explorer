@@ -121,6 +121,8 @@ export function closeOrSettleChannel(
   channel: StreamChannelState,
   isFullClose: boolean = false
 ): { channel: StreamChannelState; settlement: CheckpointSettlement } {
+  // 完全关闭是终态，不能通过默认 checkpoint 参数重新打开同一通道。
+  if (!channel.isOpen) throw new Error('Cannot settle a closed stream channel');
   const reason: CheckpointSettlement['settlementTriggerReason'] = isFullClose
     ? 'channel_close'
     : channel.totalCumulativeWei >= channel.maxChannelCapacityWei
