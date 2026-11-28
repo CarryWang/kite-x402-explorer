@@ -109,9 +109,11 @@ export function evaluateEndpointProbe(
 ): EndpointProbeResult {
   const isExpected402 = simulatedStatusCode === 402 && simulatedHasHeader;
   const isSuccess200 = simulatedStatusCode >= 200 && simulatedStatusCode < 300;
+  // 显式探测预期必须匹配；任意 2xx 不能掩盖缺失的 402 挑战或其他预期状态。
+  const matchesExpectedStatus = target.expectedStatus === undefined || target.expectedStatus === simulatedStatusCode;
 
   let status: EndpointProbeResult['status'] = 'unreachable';
-  if (isExpected402 || isSuccess200) {
+  if (matchesExpectedStatus && (isExpected402 || isSuccess200)) {
     status = simulatedLatencyMs > 500 ? 'degraded' : 'healthy';
   } else if (simulatedStatusCode >= 400 && simulatedStatusCode < 500) {
     status = 'degraded';
