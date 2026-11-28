@@ -24,11 +24,13 @@ export class ProtocolPerformanceTracker {
   private readonly maxSamples: number;
 
   constructor(maxSamples: number = 50) {
+    if (!Number.isSafeInteger(maxSamples) || maxSamples < 1) throw new Error('Sample capacity must be a positive safe integer');
     this.maxSamples = maxSamples;
   }
 
   public recordMetric(metric: SettlementLatencyMetric): void {
-    this.metrics.push(metric);
+    // 保留采样时的观测值，调用方复用对象不能回写历史性能数据。
+    this.metrics.push({ ...metric });
     if (this.metrics.length > this.maxSamples) {
       this.metrics.shift();
     }
@@ -63,7 +65,7 @@ export class ProtocolPerformanceTracker {
   }
 
   public getAllMetrics(): SettlementLatencyMetric[] {
-    return [...this.metrics];
+    return this.metrics.map((metric) => ({ ...metric }));
   }
 
   public clear(): void {
