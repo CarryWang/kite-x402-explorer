@@ -117,6 +117,8 @@ export class AgentCapabilityRegistry {
   }
 
   public registerCapability(input: CapabilityRegistrationInput): AgentCapability {
+    // 校验、摘要和注册绑定同一深层快照，包含工具参数的嵌套结构。
+    input = structuredClone(input);
     const provider = normalizeAddress(input.provider);
     if (!input.name || input.name.trim().length === 0) {
       throw new Error('Capability name cannot be empty');
@@ -147,7 +149,7 @@ export class AgentCapabilityRegistry {
       throw new Error(`Reputation score must be between 0 and 100: ${input.reputationScore}`);
     }
     validateToolSchema(input.toolSchema);
-    if (!this.verifyRegistration?.(input)) {
+    if (!this.verifyRegistration?.(structuredClone(input))) {
       throw new Error('Provider and reputation verification failed');
     }
 
