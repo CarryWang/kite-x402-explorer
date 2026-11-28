@@ -67,6 +67,8 @@ export function openStateChannel(params: {
   nonce?: bigint;
   timestamp?: number;
 }, verifyFunding?: (params: { sender: `0x${string}`; receiver: `0x${string}`; depositAmountWei: bigint }) => boolean): StateChannelConfig {
+  // 先固定本次资金参数，回调及原对象的修改不能改变已核验的抵押额。
+  params = { ...params };
   if (!isAddress(params.sender)) {
     throw new Error(`Invalid sender address: ${params.sender}`);
   }
@@ -79,7 +81,7 @@ export function openStateChannel(params: {
   if (params.depositAmountWei <= 0n) {
     throw new Error('Deposit amount must be positive');
   }
-  if (!verifyFunding?.(params)) {
+  if (!verifyFunding?.({ ...params })) {
     throw new Error('Verified channel funding required');
   }
 
@@ -146,6 +148,9 @@ export function generateCloseProof(
   finalUpdate: ChannelStateUpdate,
   verifyState?: (channel: StateChannelConfig, update: ChannelStateUpdate) => boolean,
 ): ChannelCloseProof {
+  // 关闭证明按同一份状态生成；验证器接收独立副本，不能改写最终付款或退款。
+  channel = { ...channel };
+  finalUpdate = { ...finalUpdate };
   if (finalUpdate.channelId !== channel.channelId) {
     throw new Error('Update channel ID mismatch');
   }
@@ -155,7 +160,7 @@ export function generateCloseProof(
   if (finalUpdate.transferredAmountWei < 0n || finalUpdate.nonce !== channel.currentNonce || finalUpdate.transferredAmountWei !== channel.settledAmountWei || finalUpdate.digest !== computeStateDigest(channel.channelId, finalUpdate.nonce, finalUpdate.transferredAmountWei)) {
     throw new Error('Invalid channel state update');
   }
-  if (!verifyState?.(channel, finalUpdate)) {
+  if (!verifyState?.({ ...channel }, { ...finalUpdate })) {
     throw new Error('Verified signed channel state required');
   }
 
