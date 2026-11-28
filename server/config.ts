@@ -6,20 +6,26 @@ export type ServerConfig = {
   registrySource: 'demo' | 'official';
   registryCommit: string | undefined;
   allowedOrigins: string[];
+  officialProbeAllowedOrigins: string[];
 };
 
-function parseOrigin(value: string): string {
+function parseOrigin(value: string, setting: string): string {
   let url: URL;
   try {
     url = new URL(value);
   } catch {
-    throw new Error('OUTBOUND_ALLOWED_ORIGINS must contain only HTTPS origins');
+    throw new Error(setting + ' must contain only HTTPS origins');
   }
   if (url.protocol !== 'https:' || url.username || url.password ||
       url.pathname !== '/' || url.search || url.hash) {
-    throw new Error('OUTBOUND_ALLOWED_ORIGINS must contain only HTTPS origins');
+    throw new Error(setting + ' must contain only HTTPS origins');
   }
   return url.origin;
+}
+
+function readOrigins(env: NodeJS.ProcessEnv, setting: string): string[] {
+  const values = (env[setting] ?? '').split(',').map(value => value.trim()).filter(Boolean);
+  return [...new Set(values.map(value => parseOrigin(value, setting)))];
 }
 
 export function parseServerConfig(
@@ -34,15 +40,14 @@ export function parseServerConfig(
   if (commit !== undefined && !/^[a-f0-9]{40}$/i.test(commit)) {
     throw new Error('REGISTRY_COMMIT must be a full Git commit SHA');
   }
-  const operatorOrigins = (env.OUTBOUND_ALLOWED_ORIGINS ?? '')
-    .split(',').map(value => value.trim()).filter(Boolean).map(parseOrigin);
   return {
     registrySource: source,
     registryCommit: commit,
+    officialProbeAllowedOrigins: readOrigins(env, 'OFFICIAL_PROBE_ALLOWED_ORIGINS'),
     allowedOrigins: [...new Set([
       ...registeredUrls.map(value => new URL(value).origin),
       new URL(FACILITATOR_URL).origin,
-      ...operatorOrigins,
+      ...readOrigins(env, 'OUTBOUND_ALLOWED_ORIGINS'),
     ])],
   };
 }

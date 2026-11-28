@@ -107,3 +107,72 @@ test('an invalid service URL does not discard other batch probe results', async 
     assert.deepEqual(calls, ['/api/probe/' + encodeURIComponent(valid.name)]);
   } finally {globalThis.fetch = original;}
 });
+
+test('overlapping batches and manual browser probes share four request slots', async () => {
+  const original = globalThis.fetch;
+  let release = () => {};
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  let active = 0;
+  let peak = 0;
+  const services = Array.from({length:7}, (_, index) => ({
+    ...INITIAL_SERVICES[0], name:'test-service-' + index,
+  }));
+  globalThis.fetch = async () => {
+    active++;
+    peak = Math.max(peak, active);
+    await gate;
+    active--;
+    return new Response('', {status:503});
+  };
+  const first = batchProbeServices(services);
+  const second = batchProbeServices(services);
+  const manual = probeServiceHealth(services[0]);
+  try {
+    await new Promise<void>(resolve => setImmediate(resolve));
+    assert.equal(active, 4);
+  } finally {
+    release();
+    try {
+      const [firstBatch, secondBatch, one] = await Promise.all([first, second, manual]);
+      assert.equal(Object.keys(firstBatch).length, services.length);
+      assert.equal(Object.keys(secondBatch).length, services.length);
+      assert.equal(one.httpStatus, 503);
+    } finally {
+      globalThis.fetch = original;
+    }
+  }
+  assert.equal(peak, 4);
+});
+
+test('cancelled batches abort active requests and skip entries that have not started', async () => {
+  const original = globalThis.fetch;
+  const controller = new AbortController();
+  const services = Array.from({length:7}, (_, index) => ({
+    ...INITIAL_SERVICES[0], name:'cancel-test-' + index,
+  }));
+  let started = 0;
+  let aborted = 0;
+  globalThis.fetch = async (_input, options) => new Promise<Response>((_resolve, reject) => {
+    started++;
+    const signal = options!.signal!;
+    signal.addEventListener('abort', () => {
+      aborted++;
+      reject(signal.reason);
+    }, {once:true});
+  });
+  try {
+    const batch = batchProbeServices(services, controller.signal);
+    const cancelled = assert.rejects(batch, {name:'AbortError'});
+    await new Promise<void>(resolve => setImmediate(resolve));
+    try {
+      assert.equal(started, 4);
+    } finally {
+      controller.abort();
+      await cancelled;
+    }
+    assert.equal(started, 4);
+    assert.equal(aborted, 4);
+  } finally {
+    globalThis.fetch = original;
+  }
+});

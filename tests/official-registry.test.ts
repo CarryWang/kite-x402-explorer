@@ -119,11 +119,31 @@ test('invalid first snapshot never falls back to demo and an empty official regi
 test('client requires explicit provenance and preserves unavailable directory errors',async()=>{
   const good=await loadDirectory((async()=>Response.json({services:[],registry:{source:'official',commit:sha,fetchedAt:'2026-10-28',stale:true,error:'offline'}})) as typeof fetch);
   assert.equal(good.services.length,0);assert.match(good.note,/stale: offline/);
-  assert.equal(good.stale,true);
+  assert.equal(good.registry.stale,true);
   const fresh=await loadDirectory((async()=>Response.json({services:[],registry:{source:'official',commit:sha,fetchedAt:'2026-10-28',stale:false}})) as typeof fetch);
-  assert.equal(fresh.stale,false);
+  assert.equal(fresh.registry.stale,false);
   await assert.rejects(loadDirectory((async()=>Response.json({services:[]})) as typeof fetch));
   await assert.rejects(loadDirectory((async()=>new Response('',{status:503})) as typeof fetch));
+});
+
+test('directory client preserves snapshot metadata and errors for the details panel', async () => {
+  const fetchedAt = '2026-11-22T02:01:02.000Z';
+  const registry = {
+    source: 'official',
+    commit: sha,
+    fetchedAt,
+    stale: true,
+    error: 'Upstream returned HTTP 503',
+    errors: [{path:'services/broken/service.yaml', error:'Invalid manifest'}],
+  };
+  const result = await loadDirectory(async () => Response.json({services:[], registry}));
+  assert.deepEqual(result.registry, registry);
+
+  const unavailable = {...registry, commit:null, fetchedAt:null, errors:[]};
+  await assert.rejects(
+    loadDirectory(async () => Response.json({services:[], registry:unavailable}, {status:503})),
+    {registry:unavailable},
+  );
 });
 
 test('a manifest transport failure retains the whole previous catalog',async()=>{

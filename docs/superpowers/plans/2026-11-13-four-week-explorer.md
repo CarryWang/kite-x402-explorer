@@ -71,6 +71,11 @@ For behavior changes, write a failing regression test, run it, implement the sco
 | 7 | `feat: show directory loading and stale states` | 264/264 passed | passed | Distinct accessible loading, unavailable, empty and stale notices; hide misleading empty results while loading or unavailable. Reviewed open PRs #66 and #67. Days 4 and 6 have no daily commits and remain for weekly review. |
 | 8 | `fix: reject ambiguous registry entries` | 269/269 passed. Demo and official production smoke checks passed. | passed | Rejects duplicate names, invalid manifest paths and file types, and trees above 10,000 entries. Uses the GitHub branch reference to resolve the snapshot commit within the existing response limit. |
 | 9 | `test: cover registry refresh and recovery` | 270/270 passed | passed | Tests expiry, the stale snapshot during backoff, recovery to a newer commit, and recovery from a cold start with a pinned commit. |
+| 10 | `feat: display registry provenance` | 294/294 passed | passed | The directory details show the full source commit, last successful fetch, refresh errors, and errors for excluded manifests. A failed refresh preserves the previous snapshot's provenance. |
+| 11 | `feat: allow approved official service probes` | 298/298 passed. Demo and official fixture smoke checks passed. | passed | Official probes check the current registry snapshot and a dedicated HTTPS origin allowlist for both service and facilitator. Probe requests use only the fixed GET endpoints. |
+| 12 | `fix: bound concurrent health probes` | 301/301 passed. Production smoke and probe saturation checks passed. | passed | Limits browser requests to four per page and server probes to four per process. Cancels superseded batches and verifies that upstream failures release slots only after both requests settle. |
+| 14 | `test: verify directory and probe integration` | 303/303 passed. Demo production smoke passed. | passed | Covers official snapshot recovery, mismatched probe evidence during refresh, and cache protection when switching from demo to official. The integration tests stub upstream responses. |
+| 16 | `test: cover authorization failure cases` | 307/307 passed. Demo production smoke passed for the weekly candidate. | passed | Verifies serialized authorizations offline on both Kite domains using ephemeral keys. Covers nonce uniqueness, the signed deadline, and rejection of changes to chain, contract, nonce, validity window, payee, and amount. |
 
 Append one row before each later day's single commit.
 
@@ -78,3 +83,9 @@ Append one row before each later day's single commit.
 
 The existing outbound tests cover Day 4's DNS, timeout, redirects, and edge addresses. Day 4 has no separate commit.
 The demo and official production smoke checks passed locally. Day 6's automated official-mode CI check remains open.
+
+### Weekly review, 2026-11-28
+
+The week has dated commits for Days 10, 11, 12, 14, and 16. Days 13 and 15 have no completion records.
+Merge is on hold. An unchanged directory refresh can restart a long probe batch before it finishes. A directory source or endpoint change can also leave old health results visible under the same service name, and an earlier manual probe can replace the new result.
+The review also found that the browser probe timeout is shorter than the server registry refresh budget and an official cold-start failure can leave the prior demo snapshot active in the UI.

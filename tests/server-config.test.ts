@@ -54,3 +54,21 @@ test('server config rejects outbound values that are not HTTPS origins', () => {
     );
   }
 });
+
+test('official probes require a dedicated allowlist and do not grant generic relay access', () => {
+  const env = {
+    REGISTRY_SOURCE:'official',
+    OUTBOUND_ALLOWED_ORIGINS:'https://relay.example',
+  };
+  assert.deepEqual(parseServerConfig(env, registeredUrls).officialProbeAllowedOrigins, []);
+  const config = parseServerConfig({
+    ...env,
+    OFFICIAL_PROBE_ALLOWED_ORIGINS:' https://probe.example , https://probe.example:443 ',
+  }, registeredUrls);
+  assert.deepEqual(config.officialProbeAllowedOrigins, ['https://probe.example']);
+  assert.equal(config.allowedOrigins.includes('https://probe.example'), false);
+  assert.throws(
+    () => parseServerConfig({...env, OFFICIAL_PROBE_ALLOWED_ORIGINS:'https://probe.example/healthz'}),
+    /OFFICIAL_PROBE_ALLOWED_ORIGINS/,
+  );
+});

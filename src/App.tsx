@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Navbar, type NavTab } from './components/common/Navbar.js';
 import { DirectoryView } from './components/directory/DirectoryView.js';
+import { DirectoryProvenanceDetails } from './components/directory/DirectoryProvenanceDetails.js';
 import { ServiceDetailModal } from './components/directory/ServiceDetailModal.js';
 import { PlaygroundView } from './components/playground/PlaygroundView.js';
 import { ManifestBuilderView } from './components/builder/ManifestBuilderView.js';
 import { TestnetE2ESuite } from './components/e2e/TestnetE2ESuite.js';
 import { DocsView } from './components/docs/DocsView.js';
 import { ProofLogDrawer } from './components/common/ProofLogDrawer.js';
-import { loadDirectory } from './services/directory-client.js';
+import { DirectoryLoadError, loadDirectory, type DirectoryProvenance } from './services/directory-client.js';
 import type { ServiceManifest, ServiceEndpoint } from './types/service.js';
 import type { ServiceHealthStatus, HealthAutoRefreshInterval } from './types/health.js';
 import {
@@ -43,7 +44,8 @@ export const App: React.FC = () => {
   const [directoryState, setDirectoryState] = useState<DirectoryFeedbackState>({
     kind:'loading',message:'',
   });
-  const [directorySource, setDirectorySource] = useState<'demo'|'official'|null>(null);
+  const [registry, setRegistry] = useState<DirectoryProvenance | null>(null);
+  const directorySource = registry?.source ?? null;
   const localServices = useRef(new Map<string,ServiceManifest>());
   const [selectedService, setSelectedService] = useState<ServiceManifest | null>(null);
   const [playgroundTarget, setPlaygroundTarget] = useState<{
@@ -54,6 +56,7 @@ export const App: React.FC = () => {
   // Health prober state
   const [healthMap, setHealthMap] = useState<Record<string, ServiceHealthStatus>>(getCachedHealthMap);
   const [isProbing, setIsProbing] = useState<boolean>(false);
+  const activeBatch = useRef<{services: ServiceManifest[]; controller: AbortController} | null>(null);
   const [autoRefreshInterval, setAutoRefreshInterval] = useState<HealthAutoRefreshInterval>(30);
 
   // Proof logs drawer state
@@ -73,19 +76,26 @@ export const App: React.FC = () => {
           hasSnapshot = true;
           lastSnapshotCount = merged.size;
           setServices([...merged.values()]);
-          setDirectorySource(directory.source);
+          setRegistry(directory.registry);
           setDirectoryState({
-            kind:directory.stale ? 'stale' : merged.size === 0 ? 'empty' : 'ready',
+            kind:directory.registry.stale ? 'stale' : merged.size === 0 ? 'empty' : 'ready',
             message:directory.note,
           });
         }
       } catch (error) {
-        if (active) setDirectoryState({
-          kind:hasSnapshot ? 'stale' : 'failed',
-          message:(hasSnapshot
-            ? lastSnapshotCount > 0 ? 'Showing previously loaded entries. ' : 'The last directory was empty. '
-            : '') + String(error),
-        });
+        if (active) {
+          const failedRegistry = error instanceof DirectoryLoadError ? error.registry : null;
+          const message = error instanceof Error ? error.message : String(error);
+          setRegistry(previous => previous
+            ? {...previous, stale:true, error:failedRegistry?.error ?? message}
+            : failedRegistry);
+          setDirectoryState({
+            kind:hasSnapshot ? 'stale' : 'failed',
+            message:(hasSnapshot
+              ? lastSnapshotCount > 0 ? 'Showing previously loaded entries. ' : 'The last directory was empty. '
+              : '') + message,
+          });
+        }
       }
     };
     void refresh();
@@ -95,14 +105,21 @@ export const App: React.FC = () => {
 
   // Run batch probe across all services
   const handleRunBatchProbe = useCallback(async () => {
+    if (activeBatch.current?.services === services) return;
+    activeBatch.current?.controller.abort();
+    const controller = new AbortController();
+    activeBatch.current = {services, controller};
     setIsProbing(true);
     try {
-      const results = await batchProbeServices(services);
-      setHealthMap(results);
+      const results = await batchProbeServices(services, controller.signal);
+      if (!controller.signal.aborted) setHealthMap(results);
     } catch (err) {
-      console.error('Batch probing error:', err);
+      if (!controller.signal.aborted) console.error('Batch probing error:', err);
     } finally {
-      setIsProbing(false);
+      if (activeBatch.current?.controller === controller) {
+        activeBatch.current = null;
+        setIsProbing(false);
+      }
     }
   }, [services]);
 
@@ -119,12 +136,18 @@ export const App: React.FC = () => {
     }
   }, []);
 
-  // Initial probe and real-time proof count subscription
   useEffect(() => {
-    handleRunBatchProbe();
-    const unsubscribeProofs = subscribeToProofs((updated) => setProofCount(updated.length));
-    return unsubscribeProofs;
+    void handleRunBatchProbe();
   }, [handleRunBatchProbe]);
+
+  useEffect(() => {
+    const unsubscribeProofs = subscribeToProofs((updated) => setProofCount(updated.length));
+    return () => {
+      unsubscribeProofs();
+      activeBatch.current?.controller.abort();
+      activeBatch.current = null;
+    };
+  }, []);
 
   // Auto-refresh interval effect
   useEffect(() => {
@@ -179,6 +202,7 @@ export const App: React.FC = () => {
 
       <main className="main-content">
         {activeTab === 'directory' && <DirectoryFeedback state={directoryDisplayState} />}
+        {activeTab === 'directory' && registry && <DirectoryProvenanceDetails registry={registry} />}
         {activeTab === 'directory' && <div aria-busy={directoryDisplayState.kind === 'loading'}>
           {services.length > 0 && (
             <DirectoryView

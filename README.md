@@ -28,10 +28,13 @@ entries, 200 manifests, four concurrent reads, 64 KiB per manifest and a
 12-second deadline.
 
 Official directory entries are registration metadata, not verified payment
-destinations. The payment simulator is disabled in official mode and probes
-report unavailable until live probing is configured. This change does not submit
-payments or verify availability. The official catalog currently contains draft
-entries, so deployments must not interpret catalog membership as readiness.
+destinations. The payment simulator is disabled in official mode. Live probes
+are disabled by default. Set `OFFICIAL_PROBE_ALLOWED_ORIGINS` to a comma-separated
+list of approved HTTPS origins. Include both the approved service origin and
+`https://facilitator.pieverse.io` to probe that service. The server uses the
+current official snapshot and sends GET requests to the service's `/healthz`
+and the facilitator's `/v2/supported`. A missing or stale snapshot prevents
+probing. This list is separate from the general relay allowlist.
 
 ### Key Capabilities
 
@@ -196,5 +199,10 @@ The batch settlement, bonding escrow, dynamic fee oracle, capability registry, s
 Apache-2.0
 
 ### Live probes and outbound relay
+
+Each browser page runs at most four health probe requests at once across batch
+and individual checks. The server runs up to four probes per process. A probe
+holds its slot until both upstream requests finish, and excess requests receive
+HTTP 503 with reason `probe_busy`.
 
 Health checks request the registered service `/healthz` and the facilitator `/supported`. Missing evidence, network errors and non-success responses do not fall back to simulated health. Demo settlement remains separate. The relay permits registered service origins and operator-configured `OUTBOUND_ALLOWED_ORIGINS` only (comma-separated HTTPS origins). It accepts GET, HEAD, and POST, limits JSON request bodies to 64 KiB, and forwards only Accept, JSON Content-Type, and a bounded PAYMENT-SIGNATURE header. DNS results must all be public and are pinned to the outbound socket. Redirects are refused. Each request has a three-second deadline covering DNS, headers and body, and a 1 MiB response cap. These probes verify advertised readiness, not a funded settlement.

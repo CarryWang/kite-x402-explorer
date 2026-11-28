@@ -3,15 +3,37 @@ import type { ServiceHealthStatus } from '../types/health.js';
 import {isProbeResult} from '../types/probe.js';
 
 const HEALTH_CACHE_KEY = 'kite_x402_health_cache_v1';
+const MAX_CONCURRENT_PROBES = 4;
+const waitingForSlot: (() => void)[] = [];
+let activeProbes = 0;
 const EXPECTED_ASSETS: Record<string,string> = {
   'eip155:2368':'0x38129cf4CE5E183eFF248F42A7D345Bb1B47621A',
   'eip155:2366':'0x7aB6f3ed87C42eF0aDb67Ed95090f8bF5240149e',
 };
 
 /** Failed or unverified probes never become successful simulated observations. */
-export async function probeServiceHealth(service: ServiceManifest): Promise<ServiceHealthStatus> {
+export async function probeServiceHealth(service: ServiceManifest, signal?: AbortSignal): Promise<ServiceHealthStatus> {
+  signal?.throwIfAborted();
+  if (activeProbes >= MAX_CONCURRENT_PROBES) {
+    await new Promise<void>(resolve => waitingForSlot.push(resolve));
+  } else {
+    activeProbes++;
+  }
+  try {
+    signal?.throwIfAborted();
+    return await requestProbe(service, signal);
+  } finally {
+    const next = waitingForSlot.shift();
+    if (next) next();
+    else activeProbes--;
+  }
+}
+
+async function requestProbe(service: ServiceManifest, signal?: AbortSignal): Promise<ServiceHealthStatus> {
   const started = performance.now();
   const controller = new AbortController();
+  const abort = () => controller.abort();
+  signal?.addEventListener('abort', abort, {once:true});
   const timeout = setTimeout(() => controller.abort(), 4500);
   const base = {serviceName:service.name, networkMatched:false, assetMatched:false,
     facilitatorReachable:false, lastCheckedAt:new Date().toISOString(),
@@ -26,6 +48,7 @@ export async function probeServiceHealth(service: ServiceManifest): Promise<Serv
       failedHttpStatus = response.status;
       const contentType = response.headers.get('content-type')?.split(';', 1)[0].trim().toLowerCase();
       if (contentType !== 'application/json' && !contentType?.endsWith('+json')) {
+        controller.abort();
         return {...base,status:'down',httpStatus:response.status,
           latencyMs:Math.max(1,Math.round(performance.now()-started)),
           details:'Probe failed with HTTP ' + response.status};
@@ -57,17 +80,29 @@ export async function probeServiceHealth(service: ServiceManifest): Promise<Serv
   } catch {
     return {...base,status:'down',httpStatus:failedHttpStatus,latencyMs:Math.max(1,Math.round(performance.now()-started)),
       details:failedHttpStatus === null ? 'Live probe unavailable, invalid or timed out' : 'Probe failed with HTTP ' + failedHttpStatus};
-  } finally {clearTimeout(timeout);}
+  } finally {
+    clearTimeout(timeout);
+    signal?.removeEventListener('abort', abort);
+  }
 }
 
 /**
- * Concurrently batch-probes an array of services.
+ * Shares the browser limit with individual probes and only schedules one item per worker.
  * Stores results in sessionStorage cache for fast rendering.
  */
 export async function batchProbeServices(
-  services: ServiceManifest[]
+  services: ServiceManifest[],
+  signal?: AbortSignal,
 ): Promise<Record<string, ServiceHealthStatus>> {
-  const results = await Promise.all(services.map((s) => probeServiceHealth(s)));
+  const entries = services.entries();
+  const results: ServiceHealthStatus[] = [];
+  const workers = Array.from({length:Math.min(MAX_CONCURRENT_PROBES, services.length)}, async () => {
+    for (const [index, service] of entries) {
+      results[index] = await probeServiceHealth(service, signal);
+    }
+  });
+  await Promise.all(workers);
+  signal?.throwIfAborted();
   const healthMap: Record<string, ServiceHealthStatus> = {};
 
   for (const item of results) {
