@@ -128,6 +128,14 @@ export function createMarketOracle(
     ...DEFAULT_MARKET_CONFIG,
     ...customConfig,
   };
+  // 安装时拒绝无法执行的费率策略，不能等到更新时才在 BigInt 转换中失败。
+  if (!Number.isFinite(config.targetUtilizationRatio) || config.targetUtilizationRatio <= 0 ||
+      !Number.isSafeInteger(config.maxAdjustmentBps) || config.maxAdjustmentBps < 0 ||
+      typeof config.minBaseFeeUnits !== 'bigint' || config.minBaseFeeUnits < 0n ||
+      typeof config.maxBaseFeeUnits !== 'bigint' || config.maxBaseFeeUnits < config.minBaseFeeUnits ||
+      !Number.isSafeInteger(config.quoteTtlSeconds) || config.quoteTtlSeconds <= 0) {
+    throw new Error('Invalid market policy configuration');
+  }
 
   const providers = new Map<string, ProviderMarketState>();
   let quoteCounter = 0;
@@ -195,7 +203,7 @@ export function createMarketOracle(
 
     let newBaseFee = state.currentBaseFeeUnits;
     const diff = utilizationRatio - config.targetUtilizationRatio;
-    if (diff !== 0) {
+    if (diff !== 0 && config.maxAdjustmentBps > 0) {
       const deltaBps = Math.min(
         Math.round((Math.abs(diff) / config.targetUtilizationRatio) * config.maxAdjustmentBps),
         config.maxAdjustmentBps
@@ -312,7 +320,8 @@ export function createMarketOracle(
   }
 
   return {
-    config,
+    // 公开配置用于检查，不能通过返回对象改写内部报价或费用上限。
+    get config() { return { ...config }; },
     registerProvider,
     updateUtilization,
     calculatePriorityTip,
