@@ -64,6 +64,8 @@ export function createPaymasterPool(params: {
   initialDepositWei: bigint;
   policy: PaymasterPolicy;
 }, verifyFunding?: (params: { poolId: string; sponsor: string; initialDepositWei: bigint }) => boolean): SponsorshipPool {
+  // 安装条款与验证使用同一快照，嵌套策略数组也不能被回调改写。
+  params = structuredClone(params);
   if (!params.poolId || params.poolId.trim() === '') {
     throw new Error('poolId must not be empty');
   }
@@ -73,7 +75,7 @@ export function createPaymasterPool(params: {
   if (params.initialDepositWei <= 0n) {
     throw new Error('initialDepositWei must be strictly positive');
   }
-  if (!verifyFunding?.(params)) {
+  if (!verifyFunding?.(structuredClone(params))) {
     throw new Error('Verified sponsor funding required');
   }
   if (params.policy.maxGasLimitPerTx <= 0n) {
@@ -101,10 +103,11 @@ export function createPaymasterPool(params: {
  * Deposits additional gas funds into an existing sponsorship pool.
  */
 export function depositGasToPool(pool: SponsorshipPool, amountWei: bigint, verifyDeposit?: (pool: SponsorshipPool, amountWei: bigint) => boolean): SponsorshipPool {
+  pool = structuredClone(pool);
   if (amountWei <= 0n) {
     throw new Error('deposit amount must be positive');
   }
-  if (!verifyDeposit?.(pool, amountWei)) {
+  if (!verifyDeposit?.(structuredClone(pool), amountWei)) {
     throw new Error('Verified gas deposit required');
   }
   return {
@@ -176,11 +179,14 @@ export function executeSponsoredRelay(
   gasPriceWei: bigint,
   verifyRequest?: (pool: SponsorshipPool, request: RelayRequest) => boolean,
 ): { receipt: SponsoredReceipt; updatedPool: SponsorshipPool } {
+  // 资格、成本、nonce 和账本更新绑定同一状态；验证器只接触隔离副本。
+  pool = structuredClone(pool);
+  request = { ...request };
   const check = validateSponsorshipEligibility(pool, request, gasPriceWei);
   if (!check.eligible) {
     throw new Error(`Sponsorship rejected: ${check.reason}`);
   }
-  if (!verifyRequest?.(pool, request)) {
+  if (!verifyRequest?.(structuredClone(pool), { ...request })) {
     throw new Error('Verified signed relay request required');
   }
 
