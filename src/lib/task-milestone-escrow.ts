@@ -122,7 +122,8 @@ export function releaseMilestonePayout(
     throw new Error(`Deliverable hash mismatch for milestone ${milestoneId}`);
   }
 
-  const updatedMilestones = [...vault.milestones];
+  // 未完成的里程碑也属于后继快照，旧 vault 的引用不能改写之后的付款条款。
+  const updatedMilestones = vault.milestones.map((item) => ({ ...item }));
   updatedMilestones[milestoneIndex] = {
     ...milestone,
     isCompleted: true,
