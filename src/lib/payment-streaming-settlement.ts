@@ -36,6 +36,8 @@ export class PaymentStreamingSettlement {
     durationSeconds: number;
     now?: number;
   }): StreamChannel {
+    // 验证和安装使用同一组资金条款，调用方在验证回调内复用参数不能改变本次流。
+    params = { ...params };
     if (this.streams.has(params.id)) {
       throw new Error('Stream channel already exists');
     }
