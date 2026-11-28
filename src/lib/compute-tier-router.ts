@@ -238,8 +238,8 @@ export function routeComputeRequest(
     const spec = tierSpecs[tierName];
     if (!spec) continue;
 
-    // Check context window
-    if (request.promptTokens > spec.maxContextTokens) {
+    // 模型上下文包含输入和预留输出，不能只按 prompt 判断容量。
+    if (request.promptTokens + request.maxCompletionTokens > spec.maxContextTokens) {
       continue;
     }
     if (request.maxCompletionTokens > spec.maxOutputTokens) {
