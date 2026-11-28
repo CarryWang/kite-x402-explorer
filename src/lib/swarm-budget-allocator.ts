@@ -29,6 +29,11 @@ export function calculateSwarmBountySplit(
   allocations: AgentBudgetAllocation[],
   assetDecimals: number = 18
 ): SwarmSplitResult {
+  // ERC-20 decimals 是 uint8；拒绝无效元数据，避免格式化抛异常或构造失真的单位。
+  if (!Number.isInteger(assetDecimals) || assetDecimals < 0 || assetDecimals > 255) {
+    return { totalAmountUnits: totalBountyUnits, totalDustRefundUnits: 0n, shares: [],
+      isValid: false, error: 'Asset decimals must be an integer from 0 to 255' };
+  }
   if (totalBountyUnits <= 0n) {
     return {
       totalAmountUnits: totalBountyUnits,
@@ -77,7 +82,8 @@ export function calculateSwarmBountySplit(
     distributedSum += shareUnits;
 
     // Formatting
-    const div = BigInt(10 ** assetDecimals);
+    // 先用 Number 计算 10 ** decimals 会在合法的高精度代币上丢失原子单位。
+    const div = 10n ** BigInt(assetDecimals);
     const whole = shareUnits / div;
     const frac = (shareUnits % div).toString().padStart(assetDecimals, '0').slice(0, 4);
 
@@ -85,7 +91,7 @@ export function calculateSwarmBountySplit(
       agentRole: alloc.agentRole,
       recipient: alloc.assignedAddress,
       shareUnits,
-      shareFormatted: `${whole}.${frac}`,
+      shareFormatted: assetDecimals === 0 ? whole.toString() : `${whole}.${frac}`,
       percentage: alloc.weightBps / 100,
     });
   }
