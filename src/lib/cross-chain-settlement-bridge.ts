@@ -171,6 +171,9 @@ export function attestBridgeFulfillment(
   },
   verifyFulfillment?: (intent: CrossChainBridgeIntent, proof: typeof params) => boolean,
 ): CrossChainBridgeIntent {
+  // 先固定经验证的意图和目的链证据，回调修改不能替换最终结算结果。
+  intent = { ...intent };
+  params = { ...params };
   if (intent.status !== 'pending') {
     throw new Error(`Cannot attest intent in state: ${intent.status}`);
   }
@@ -188,7 +191,7 @@ export function attestBridgeFulfillment(
   if (params.destinationChainId !== intent.destinationChainId || params.destinationRecipient?.toLowerCase() !== intent.destinationRecipient.toLowerCase() || params.destinationAmountWei === undefined || params.destinationAmountWei < intent.minDestinationAmountWei || !/^0x[0-9a-fA-F]{64}$/.test(params.destinationTxHash)) {
     throw new Error('Destination proof does not match bridge intent');
   }
-  if (!verifyFulfillment?.(intent, params)) {
+  if (!verifyFulfillment?.({ ...intent }, { ...params })) {
     throw new Error('Verified cross-chain fulfillment proof required');
   }
 
