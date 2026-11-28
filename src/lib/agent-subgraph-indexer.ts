@@ -106,7 +106,8 @@ export class AgentSubgraphIndexer {
     // Sort descending by timestamp
     filtered.sort((a, b) => b.timestamp - a.timestamp);
 
-    return filtered.slice(offset, offset + limit);
+    // 查询是独立快照，外部修改不能绕过 payer/recipient 索引更新或改写统计依据。
+    return filtered.slice(offset, offset + limit).map((event) => ({ ...event }));
   }
 
   /**
