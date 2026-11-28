@@ -43,5 +43,5 @@ test('storage recovers from wrong shapes and excludes invalid imported records',
   assert.deepEqual(getStoredProofs(), []);
   raw = JSON.stringify([proof, { id: 'bad' }]);
   assert.deepEqual(getStoredProofs(), [proof]);
-  assert.deepEqual(importProofs([{ ...proof, id: 'new' }, { id: 'bad' } as PaymentProofRecord]), { added: 1, total: 2 });
+  assert.deepEqual(importProofs([{ ...proof, id: 'new' }, { id: 'bad' } as PaymentProofRecord]), { added: 1, skipped: 0, total: 2 });
 });

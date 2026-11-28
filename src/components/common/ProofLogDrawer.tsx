@@ -6,6 +6,7 @@ import {
   clearAllProofs,
   subscribeToProofs,
   importProofs,
+  MAX_STORED_PROOFS,
 } from '../../services/proof-logger.js';
 import {
   downloadReceiptAsJson,
@@ -97,7 +98,10 @@ export const ProofLogDrawer: React.FC<ProofLogDrawerProps> = ({ isOpen, onClose 
 
         if (toImport.length > 0) {
           const result = importProofs(toImport);
-          setImportStatus(`Imported ${result.added} new proof record(s)!`);
+          const skipped = result.skipped > 0
+            ? ` ${result.skipped} older record(s) skipped: only the ${MAX_STORED_PROOFS} newest are kept.`
+            : '';
+          setImportStatus(`Imported ${result.added} new proof record(s).${skipped}`);
           setTimeout(() => setImportStatus(null), 3000);
         } else {
           alert('No valid x402 payment proof records found in file.');
