@@ -50,12 +50,20 @@ export function saveProof(
   return newRecord;
 }
 
+/** At most this many records are kept; the oldest are dropped first. */
+export const MAX_STORED_PROOFS = 100;
+
+const newestFirst = (a: PaymentProofRecord, b: PaymentProofRecord) => Date.parse(b.timestamp) - Date.parse(a.timestamp);
+
 /**
  * Imports an array of payment proof records into local storage, merging and deduplicating by ID.
+ * The merged list is ordered newest first and keeps the MAX_STORED_PROOFS newest records, so
+ * importing old receipts never pushes out newer local ones. `skipped` counts new records that
+ * were not kept because they are older than all retained records.
  */
-export function importProofs(incoming: PaymentProofRecord[]): { added: number; total: number } {
+export function importProofs(incoming: PaymentProofRecord[]): { added: number; skipped: number; total: number } {
   if (!incoming || incoming.length === 0) {
-    return { added: 0, total: getStoredProofs().length };
+    return { added: 0, skipped: 0, total: getStoredProofs().length };
   }
 
   const current = getStoredProofs();
@@ -70,18 +78,23 @@ export function importProofs(incoming: PaymentProofRecord[]): { added: number; t
     }
   }
 
-  if (newRecords.length > 0) {
-    const updated = [...newRecords, ...current].slice(0, 100);
+  // Stable sort: on equal timestamps local records stay ahead of imported ones.
+  const updated = [...current, ...newRecords].sort(newestFirst).slice(0, MAX_STORED_PROOFS);
+  const kept = new Set(updated.map((p) => p.id));
+  const added = newRecords.filter((p) => kept.has(p.id)).length;
+  const skipped = newRecords.length - added;
+
+  if (added > 0) {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
     } catch (err) {
       console.error('Failed to write imported proofs to localStorage', err);
     }
     notifyListeners(updated);
-    return { added: newRecords.length, total: updated.length };
+    return { added, skipped, total: updated.length };
   }
 
-  return { added: 0, total: current.length };
+  return { added: 0, skipped, total: current.length };
 }
 
 /**
