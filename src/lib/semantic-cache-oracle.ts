@@ -63,6 +63,10 @@ function proofPayload(proof: CacheHitProof): string {
   ]);
 }
 
+function isTimestamp(value: number): boolean {
+  return Number.isSafeInteger(value) && value >= 0;
+}
+
 export class SemanticCacheOracle {
   constructor(private readonly signingKey?: string) {}
 
@@ -111,6 +115,8 @@ export class SemanticCacheOracle {
     const promptHash = SemanticCacheOracle.hashPrompt(params.prompt);
     const responseDigest = SemanticCacheOracle.digestPayload(params.responsePayload);
     const now = Math.floor(Date.now() / 1000);
+    const expiresAt = now + ttl;
+    if (!isTimestamp(now) || !isTimestamp(expiresAt)) throw new Error('Invalid cache expiry timestamp');
     const provider = params.provider.toLowerCase();
     const cacheKey = crypto
       .createHash('sha256')
@@ -126,7 +132,7 @@ export class SemanticCacheOracle {
       responseDigest,
       provider,
       cachedAt: now,
-      expiresAt: now + ttl,
+      expiresAt,
       basePriceUsd: params.basePriceUsd,
       discountBps,
       hitCount: 0,
@@ -145,6 +151,8 @@ export class SemanticCacheOracle {
     provider: string,
     now: number = Math.floor(Date.now() / 1000)
   ): CacheLookupResult {
+    // 无效时钟会绕过到期比较，必须在命中统计和缓存状态变化之前拒绝。
+    if (!isTimestamp(now)) throw new Error('Invalid cache lookup clock');
     this.totalLookups++;
     const promptHash = SemanticCacheOracle.hashPrompt(prompt);
     const cacheKey = crypto
@@ -217,7 +225,7 @@ export class SemanticCacheOracle {
     trustedSigningKey?: string,
     isActive?: (proof: CacheHitProof) => boolean
   ): boolean {
-    if (!trustedSigningKey || !isActive || now >= proof.validUntil || !/^[0-9a-f]{64}$/i.test(proof.proofSignature)) {
+    if (!isTimestamp(now) || !proof || !isTimestamp(proof.validUntil) || !trustedSigningKey || !isActive || now >= proof.validUntil || !/^[0-9a-f]{64}$/i.test(proof.proofSignature)) {
       return false;
     }
     try {
